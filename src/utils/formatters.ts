@@ -1,0 +1,526 @@
+export function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(Math.round(amount));
+}
+
+export function formatWeight(kg: number): string {
+  if (isNaN(kg)) return '0.000 kg';
+  return `${kg.toFixed(3)} kg`;
+}
+
+export function formatDate(dateString: string): string {
+  try {
+    const d = new Date(dateString);
+    return d.toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  } catch {
+    return dateString;
+  }
+}
+
+export function formatDateTime(dateString: string): string {
+  try {
+    const d = new Date(dateString);
+    return d.toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return dateString;
+  }
+}
+
+import { BusinessSettings, Sale, WhatsAppTemplates } from '../types';
+
+export const LEGACY_FULL_PAID_BILL_TEMPLATE = `🙏 *{shopName}* 🙏
+🧾 *Bill No:* {invoiceNo}
+👤 *Customer:* {customerName}
+
+📦 *Items:* {itemsSummary}
+💰 *Total Bill Amount:* ₹{totalAmount}
+💵 *Amount Paid Today:* ₹{paidAmount}
+
+✅ *Payment Status:* FULLY PAID / पूरा भुगतान प्राप्त (कोई बकाया नहीं)
+{loyaltySchemeNotice}
+Thank you for choosing our pure Desi Ghee! 🧈
+शुद्ध देसी घी के लिए धन्यवाद!`;
+
+export const LEGACY_PENDING_BILL_TEMPLATE = `🙏 *{shopName}* 🙏
+🧾 *Bill No:* {invoiceNo}
+👤 *Customer:* {customerName}
+
+📦 *Items:* {itemsSummary}
+💰 *Total Bill Amount:* ₹{totalAmount}
+💵 *Amount Paid Today:* ₹{paidAmount}
+
+🚨 *PAYMENT PENDING INTIMATION / बकाया बिल सूचना* 🚨
+⚠️ *AMOUNT DUE (बकाया राशि):* ₹{pendingAmount}
+📌 *Status:* Unpaid / Partial Payment (उधार)
+कृपया अपनी बकाया राशि ₹{pendingAmount} का भुगतान जल्द से जल्द करें।
+UPI / Phone: {shopPhone}
+{loyaltySchemeNotice}
+Thank you for choosing our pure Desi Ghee! 🧈
+शुद्ध देसी घी के लिए धन्यवाद!`;
+
+export const LEGACY_V2_BILL_TEMPLATE = `🧈 *{shopName}*
+🧾 *Bill No:* {invoiceNo} • 📅 {dateTime}
+👤 *Customer:* {customerName}
+
+📦 *Items:*
+{itemsSummary}
+
+{billBreakdown}
+
+{paymentStatusFooter}
+{loyaltySchemeNotice}
+Thank you for choosing our pure Desi Ghee! 🧈
+शुद्ध देसी घी के लिए धन्यवाद!`;
+
+export const DEFAULT_WHATSAPP_TEMPLATES: WhatsAppTemplates = {
+  fullPaidBillTemplate: `🙏 *{shopName}* 🙏
+🧾 *Bill No:* {invoiceNo} • 📅 {dateTime}
+👤 *Customer:* {customerName}
+
+📦 *Items:*
+{itemsSummary}
+
+{billBreakdown}
+
+{paymentStatusFooter}
+{loyaltySchemeNotice}
+Thank you for choosing our pure Desi Ghee! 🧈
+शुद्ध देसी घी के लिए धन्यवाद!`,
+
+  pendingBillTemplate: `🙏 *{shopName}* 🙏
+🧾 *Bill No:* {invoiceNo} • 📅 {dateTime}
+👤 *Customer:* {customerName}
+
+📦 *Items:*
+{itemsSummary}
+
+{billBreakdown}
+
+{paymentStatusFooter}
+{loyaltySchemeNotice}
+Thank you for choosing our pure Desi Ghee! 🧈
+शुद्ध देसी घी के लिए धन्यवाद!`,
+
+  paymentConfirmationTemplate: `🙏 *{shopName}* 🙏
+*भुगतान पावती / PAYMENT CONFIRMATION* ✅
+
+नमस्ते *{customerName}* जी,
+आपका भुगतान सफलतापूर्वक प्राप्त हो गया है।
+
+💵 *Amount Received (प्राप्त राशि):* ₹{amountReceived}
+💳 *Payment Mode:* {paymentMode}
+📅 *Date & Time:* {dateTime}
+🧾 *Receipt No:* {receiptNo}
+📝 *Note:* {note}
+
+-----------------------------------
+📊 *Account Summary (खाता स्थिति):*
+• Previous Balance (पिछला बकाया): ₹{previousBalance}
+• Paid Amount (जमा किया): -₹{amountReceived}
+• Remaining Balance (शेष बकाया): ₹{remainingBalance}
+-----------------------------------
+
+समय पर भुगतान के लिए आपका बहुत-बहुत धन्यवाद! 🙏
+*{shopName}* • Ph: {shopPhone}`,
+};
+
+export function substituteVariables(
+  template: string,
+  vars: Record<string, string | number | undefined | null>
+): string {
+  let result = template;
+  for (const [key, val] of Object.entries(vars)) {
+    const regex = new RegExp(`\\{${key}\\}`, 'g');
+    result = result.replace(regex, val !== undefined && val !== null ? String(val) : '');
+  }
+  // Clean up any double blank lines caused by empty optional fields
+  return result.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+export function generateWhatsAppMessage({
+  shopName,
+  customerName,
+  invoiceNo,
+  dateTime,
+  itemsSummary,
+  subtotal,
+  discountPercent,
+  discountAmount,
+  totalAmount,
+  paidAmount,
+  cashReceived,
+  onlineReceived,
+  pendingAmount,
+  currentBillDue,
+  previousUdhaar,
+  previousUdhaarCleared,
+  advanceUsed,
+  extraPaymentAdded,
+  notes,
+  loyaltyActive,
+  loyaltyExpiry,
+  shopPhone,
+  customTemplate,
+  templates,
+}: {
+  shopName: string;
+  customerName: string;
+  invoiceNo: string;
+  dateTime?: string;
+  itemsSummary: string;
+  subtotal?: number;
+  discountPercent?: number;
+  discountAmount?: number;
+  totalAmount: number;
+  paidAmount: number;
+  cashReceived?: number;
+  onlineReceived?: number;
+  pendingAmount: number;
+  currentBillDue?: number;
+  previousUdhaar?: number;
+  previousUdhaarCleared?: number;
+  advanceUsed?: number;
+  extraPaymentAdded?: number;
+  notes?: string;
+  loyaltyActive?: boolean;
+  loyaltyExpiry?: string;
+  shopPhone?: string;
+  customTemplate?: string;
+  templates?: Partial<WhatsAppTemplates>;
+}): string {
+  const isPending = pendingAmount > 0;
+  const prevUdhaarVal = previousUdhaar || 0;
+  const prevClearedVal = previousUdhaarCleared || 0;
+  const advanceUsedVal = advanceUsed || 0;
+  const extraAddedVal = extraPaymentAdded || 0;
+  const currentBillDueVal = currentBillDue !== undefined ? currentBillDue : pendingAmount;
+  const totalWithPrevious = Math.max(0, totalAmount + prevUdhaarVal - advanceUsedVal);
+
+  // Choose template: customTemplate > templates[key] > DEFAULT (auto-upgrade unmodified older defaults)
+  let templateToUse = customTemplate;
+  if (!templateToUse) {
+    if (isPending) {
+      const candidate = templates?.pendingBillTemplate?.trim();
+      const isLegacy =
+        !candidate ||
+        candidate === LEGACY_PENDING_BILL_TEMPLATE.trim() ||
+        candidate === LEGACY_V2_BILL_TEMPLATE.trim();
+      templateToUse = isLegacy
+        ? DEFAULT_WHATSAPP_TEMPLATES.pendingBillTemplate
+        : templates!.pendingBillTemplate!;
+    } else {
+      const candidate = templates?.fullPaidBillTemplate?.trim();
+      const isLegacy =
+        !candidate ||
+        candidate === LEGACY_FULL_PAID_BILL_TEMPLATE.trim() ||
+        candidate === LEGACY_V2_BILL_TEMPLATE.trim();
+      templateToUse = isLegacy
+        ? DEFAULT_WHATSAPP_TEMPLATES.fullPaidBillTemplate
+        : templates!.fullPaidBillTemplate!;
+    }
+  }
+
+  // 1. Current Bill, 2. Previous Pending or Advance Adjustments, 3. Total Bill & Amount Paid, 4. Remarks
+  const breakdownLines: string[] = ['-----------------------------------'];
+  if (discountAmount && discountAmount > 0 && subtotal !== undefined) {
+    breakdownLines.push(`📋 *Subtotal:* ₹${Math.round(subtotal).toLocaleString('en-IN')}`);
+    breakdownLines.push(
+      `🎁 *Discount${discountPercent ? ` (${discountPercent}%)` : ''}:* -₹${Math.round(discountAmount).toLocaleString('en-IN')}`
+    );
+  }
+  breakdownLines.push(
+    `🧾 *Current Bill (आज का बिल):* ₹${Math.round(totalAmount).toLocaleString('en-IN')}`
+  );
+  if (prevUdhaarVal > 0) {
+    breakdownLines.push(
+      `⚠️ *Previous Pending Udhaar (पिछला बकाया):* +₹${Math.round(prevUdhaarVal).toLocaleString('en-IN')}`
+    );
+  }
+  if (advanceUsedVal > 0) {
+    breakdownLines.push(
+      `✨ *Advance Adjusted (पुराना एडवांस घटाया):* -₹${Math.round(advanceUsedVal).toLocaleString('en-IN')}`
+    );
+  }
+  breakdownLines.push(
+    `💰 *Total Bill Amount (कुल देय राशि):* ₹${Math.round(totalWithPrevious).toLocaleString('en-IN')}`
+  );
+
+  // Paid breakdown
+  let modeDetail = '';
+  const cashVal = cashReceived || 0;
+  const onlineVal = onlineReceived || 0;
+  if (paidAmount > 0) {
+    if (cashVal > 0 && onlineVal > 0) {
+      modeDetail = ` (Cash: ₹${Math.round(cashVal).toLocaleString('en-IN')} + Online: ₹${Math.round(onlineVal).toLocaleString('en-IN')})`;
+    } else if (onlineVal > 0) {
+      modeDetail = ' (Online/UPI)';
+    } else if (cashVal > 0) {
+      modeDetail = ' (Cash)';
+    }
+  } else {
+    modeDetail = ' (Unpaid)';
+  }
+  breakdownLines.push(
+    `💵 *Amount Paid Today (आज जमा राशि):* ₹${Math.round(paidAmount).toLocaleString('en-IN')}${modeDetail}`
+  );
+
+  if (notes && notes.trim()) {
+    breakdownLines.push(`📝 *Remarks / Note:* ${notes.trim()}`);
+  }
+  breakdownLines.push('-----------------------------------');
+  const billBreakdown = breakdownLines.join('\n');
+
+  // Final status at the end: Advance Saved / Pending Payment / Full Paid (restored attractive emojis!)
+  const statusLines: string[] = [];
+  if (extraAddedVal > 0) {
+    statusLines.push(`✅ *Payment Status:* FULLY PAID / पूरा भुगतान प्राप्त (कोई बकाया नहीं)`);
+    statusLines.push(
+      `💰 *EXTRA PAID → SAVED AS ADVANCE (एडवांस जमा):* +₹${Math.round(extraAddedVal).toLocaleString('en-IN')}`
+    );
+    statusLines.push(
+      `✨ Linked to your Khata — ₹${Math.round(extraAddedVal).toLocaleString('en-IN')} will automatically deduct from your next bill!`
+    );
+  } else if (pendingAmount > 0) {
+    statusLines.push(`🚨 *PAYMENT PENDING INTIMATION / बकाया बिल सूचना* 🚨`);
+    statusLines.push(
+      `⚠️ *${prevUdhaarVal > 0 ? 'TOTAL AMOUNT DUE (कुल बकाया राशि)' : 'AMOUNT DUE (बकाया राशि)'}:* ₹${Math.round(pendingAmount).toLocaleString('en-IN')}`
+    );
+    if (prevUdhaarVal > 0) {
+      const remPrevUdhaar = Math.max(0, prevUdhaarVal - prevClearedVal);
+      if (currentBillDueVal > 0 && remPrevUdhaar > 0) {
+        statusLines.push(
+          `📌 *Breakdown:* Current Bill Due ₹${Math.round(currentBillDueVal).toLocaleString('en-IN')} + Prev. Udhaar Due ₹${Math.round(remPrevUdhaar).toLocaleString('en-IN')}`
+        );
+      } else if (prevClearedVal > 0 && currentBillDueVal > 0) {
+        statusLines.push(
+          `📌 *Breakdown:* Current Bill Due ₹${Math.round(currentBillDueVal).toLocaleString('en-IN')} (Prev. Udhaar ₹${Math.round(prevClearedVal).toLocaleString('en-IN')} Cleared)`
+        );
+      }
+    }
+    statusLines.push(`📌 *Status:* Unpaid / Partial Payment (उधार)`);
+    statusLines.push(
+      `कृपया अपनी बकाया राशि ₹${Math.round(pendingAmount).toLocaleString('en-IN')} का भुगतान जल्द से जल्द करें।`
+    );
+    if (shopPhone) {
+      statusLines.push(`UPI / Phone: ${shopPhone}`);
+    }
+  } else {
+    if (prevClearedVal > 0) {
+      statusLines.push(`✅ *Payment Status:* ALL DUES CLEARED / पूरा हिसाब चुकता 🎉`);
+      statusLines.push(
+        `📌 Previous Udhaar ₹${Math.round(prevClearedVal).toLocaleString('en-IN')} + Today's Bill Paid in Full (कोई बकाया नहीं)`
+      );
+    } else if (advanceUsedVal > 0) {
+      statusLines.push(`✅ *Payment Status:* FULLY PAID / पूरा भुगतान प्राप्त (कोई बकाया नहीं)`);
+      statusLines.push(
+        `✨ Settled using ₹${Math.round(advanceUsedVal).toLocaleString('en-IN')} Advance Credit`
+      );
+    } else {
+      statusLines.push(`✅ *Payment Status:* FULLY PAID / पूरा भुगतान प्राप्त (कोई बकाया नहीं)`);
+    }
+  }
+  const paymentStatusFooter = statusLines.join('\n');
+
+  const loyaltySchemeNotice =
+    loyaltyActive && loyaltyExpiry
+      ? `\n🌟 *Ghee Discount Scheme Active!*\nYou have 5% OFF valid till: *${loyaltyExpiry}* on your next Ghee purchase.\n`
+      : '';
+
+  const hasStructuredPlaceholders =
+    templateToUse.includes('{billBreakdown}') ||
+    templateToUse.includes('{paymentStatusFooter}');
+
+  let message = substituteVariables(templateToUse, {
+    shopName,
+    customerName,
+    invoiceNo,
+    dateTime: dateTime || '',
+    itemsSummary,
+    currentBillAmount: Math.round(totalAmount).toLocaleString('en-IN'),
+    totalAmount: Math.round(totalWithPrevious).toLocaleString('en-IN'),
+    paidAmount: Math.round(paidAmount).toLocaleString('en-IN'),
+    pendingAmount: Math.round(pendingAmount).toLocaleString('en-IN'),
+    previousUdhaar: Math.round(prevUdhaarVal).toLocaleString('en-IN'),
+    advanceUsed: Math.round(advanceUsedVal).toLocaleString('en-IN'),
+    extraPaymentAdded: Math.round(extraAddedVal).toLocaleString('en-IN'),
+    remarks: notes?.trim() || '',
+    billBreakdown,
+    paymentStatusFooter,
+    shopPhone: shopPhone || '',
+    loyaltySchemeNotice,
+  });
+
+  // Fallback for user-customized templates that don't include {billBreakdown}
+  if (!hasStructuredPlaceholders) {
+    const extraLines: string[] = [];
+    if (prevUdhaarVal > 0) {
+      extraLines.push(
+        `📌 *Previous Udhaar Added:* +₹${Math.round(prevUdhaarVal).toLocaleString('en-IN')}`
+      );
+    }
+    if (advanceUsedVal > 0) {
+      extraLines.push(
+        `💎 *Advance Deducted:* -₹${Math.round(advanceUsedVal).toLocaleString('en-IN')}`
+      );
+    }
+    if (notes && notes.trim()) {
+      extraLines.push(`📝 *Remarks:* ${notes.trim()}`);
+    }
+    if (extraAddedVal > 0) {
+      extraLines.push(
+        `💰 *Extra Paid Saved as Advance:* +₹${Math.round(extraAddedVal).toLocaleString('en-IN')}`
+      );
+    }
+    if (extraLines.length > 0) {
+      message += `\n\n${extraLines.join('\n')}`;
+    }
+  }
+
+  return message;
+}
+
+export function buildSaleWhatsAppMessage(
+  sale: Sale,
+  settings: BusinessSettings,
+  options?: {
+    attachmentKind?: 'image' | 'pdf';
+    loyaltyExpiry?: string;
+  }
+): string {
+  const itemsSummary = sale.items
+    .map((it) => {
+      const testTag =
+        it.isCream || it.testPercentage ? ` [Test ${it.testPercentage || 51}%]` : '';
+      return `• ${it.productName}${testTag}: ${it.quantityKg.toFixed(3)} kg × ₹${it.ratePerKg} = ₹${Math.round(it.total).toLocaleString('en-IN')}`;
+    })
+    .join('\n');
+
+  const previousUdhaar = sale.previousUdhaar || 0;
+  const previousUdhaarCleared = sale.previousUdhaarCleared || 0;
+  const advanceUsed = sale.advanceUsed || 0;
+  const extraPaymentAdded = sale.extraPaymentAdded || 0;
+  const totalBalanceDue = Math.max(
+    0,
+    Math.round((previousUdhaar - previousUdhaarCleared + sale.pendingAmount) * 100) / 100
+  );
+  const isSchemeActive = settings.loyaltySchemeEnabled !== false;
+
+  let msg = generateWhatsAppMessage({
+    shopName: settings.shopName,
+    customerName: sale.customerName,
+    invoiceNo: sale.invoiceNo,
+    dateTime: formatDateTime(sale.date),
+    itemsSummary,
+    subtotal: sale.subtotal,
+    discountPercent: sale.discountPercent,
+    discountAmount: sale.discountAmount,
+    totalAmount: sale.totalAmount,
+    paidAmount: sale.cashReceived + sale.onlineReceived,
+    cashReceived: sale.cashReceived,
+    onlineReceived: sale.onlineReceived,
+    pendingAmount: totalBalanceDue,
+    currentBillDue: sale.pendingAmount,
+    previousUdhaar,
+    previousUdhaarCleared,
+    advanceUsed,
+    extraPaymentAdded,
+    notes: sale.notes,
+    loyaltyActive: isSchemeActive && sale.isLoyaltyDiscountApplied,
+    loyaltyExpiry: options?.loyaltyExpiry,
+    shopPhone: settings.phone,
+    templates: settings.whatsAppTemplates,
+  });
+
+  if (options?.attachmentKind) {
+    msg += `\n\n📎 _${
+      options.attachmentKind === 'image'
+        ? 'Bill photograph'
+        : 'Official Invoice PDF'
+    } attached for your records._`;
+  }
+
+  return msg;
+}
+
+export function generatePaymentReceiptWhatsAppMessage({
+  shopName,
+  shopPhone,
+  customerName,
+  receiptNo,
+  date,
+  amountReceived,
+  paymentMode,
+  previousBalance,
+  remainingBalance,
+  advanceAdded,
+  remainingAdvance,
+  note,
+  customTemplate,
+  template,
+}: {
+  shopName: string;
+  shopPhone?: string;
+  customerName: string;
+  receiptNo?: string;
+  date: string;
+  amountReceived: number;
+  paymentMode: 'cash' | 'online';
+  previousBalance: number;
+  remainingBalance: number;
+  advanceAdded?: number;
+  remainingAdvance?: number;
+  note?: string;
+  customTemplate?: string;
+  template?: string;
+}): string {
+  const templateToUse =
+    customTemplate?.trim() ||
+    template?.trim() ||
+    DEFAULT_WHATSAPP_TEMPLATES.paymentConfirmationTemplate;
+
+  const paymentModeStr =
+    paymentMode === 'cash' ? '💵 Cash (नकद)' : '📱 Online / UPI (ऑनलाइन)';
+
+  const remainingBalanceStr =
+    remainingBalance > 0
+      ? `₹${remainingBalance.toLocaleString('en-IN')}`
+      : '₹0 (खाता पूर्ण चुकता / All Cleared)';
+
+  let message = substituteVariables(templateToUse, {
+    shopName,
+    shopPhone: shopPhone || '',
+    customerName,
+    receiptNo: receiptNo || '',
+    dateTime: formatDateTime(date),
+    amountReceived: amountReceived.toLocaleString('en-IN'),
+    paymentMode: paymentModeStr,
+    previousBalance: previousBalance.toLocaleString('en-IN'),
+    remainingBalance: remainingBalanceStr,
+    note: note || '',
+  });
+
+  if ((advanceAdded && advanceAdded > 0) || (remainingAdvance && remainingAdvance > 0)) {
+    const extraLines: string[] = [];
+    if (advanceAdded && advanceAdded > 0) {
+      extraLines.push(`💰 *Extra Paid / Advance Saved:* +₹${advanceAdded.toLocaleString('en-IN')}`);
+    }
+    if (remainingAdvance && remainingAdvance > 0) {
+      extraLines.push(`🏦 *Total Advance Credit Available (अगले बिल में घटेगा):* ₹${remainingAdvance.toLocaleString('en-IN')}`);
+    }
+    message += `\n\n${extraLines.join('\n')}`;
+  }
+
+  return message;
+}

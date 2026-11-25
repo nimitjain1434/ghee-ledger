@@ -1,0 +1,6 @@
+{
+  "name": "Desi Ghee Ledger & Cash Manager",
+  "description": "Local ledger, cash counter manager, and customer loyalty discount tracker for a desi ghee retail and processing business.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
