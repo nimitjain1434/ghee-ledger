@@ -38,7 +38,7 @@ export function formatDateTime(dateString: string): string {
   }
 }
 
-import { BusinessSettings, Sale, WhatsAppTemplates } from '../types';
+import { BusinessSettings, Customer, OnlineOrder, Sale, WhatsAppTemplates } from '../types';
 
 export const LEGACY_FULL_PAID_BILL_TEMPLATE = `🙏 *{shopName}* 🙏
 🧾 *Bill No:* {invoiceNo}
@@ -84,6 +84,42 @@ export const LEGACY_V2_BILL_TEMPLATE = `🧈 *{shopName}*
 Thank you for choosing our pure Desi Ghee! 🧈
 शुद्ध देसी घी के लिए धन्यवाद!`;
 
+export const LEGACY_V3_BILL_TEMPLATE = `🙏 *{shopName}* 🙏
+🧾 *Bill No:* {invoiceNo} • 📅 {dateTime}
+👤 *Customer:* {customerName}
+
+📦 *Items:*
+{itemsSummary}
+
+{billBreakdown}
+
+{paymentStatusFooter}
+{loyaltySchemeNotice}
+Thank you for choosing our pure Desi Ghee! 🧈
+शुद्ध देसी घी के लिए धन्यवाद!`;
+
+export const LEGACY_V3_PAYMENT_CONFIRMATION_TEMPLATE = `🙏 *{shopName}* 🙏
+*भुगतान पावती / PAYMENT CONFIRMATION* ✅
+
+नमस्ते *{customerName}* जी,
+आपका भुगतान सफलतापूर्वक प्राप्त हो गया है।
+
+💵 *Amount Received (प्राप्त राशि):* ₹{amountReceived}
+💳 *Payment Mode:* {paymentMode}
+📅 *Date & Time:* {dateTime}
+🧾 *Receipt No:* {receiptNo}
+📝 *Note:* {note}
+
+-----------------------------------
+📊 *Account Summary (खाता स्थिति):*
+• Previous Balance (पिछला बकाया): ₹{previousBalance}
+• Paid Amount (जमा किया): -₹{amountReceived}
+• Remaining Balance (शेष बकाया): ₹{remainingBalance}
+-----------------------------------
+
+समय पर भुगतान के लिए आपका बहुत-बहुत धन्यवाद! 🙏
+*{shopName}* • Ph: {shopPhone}`;
+
 export const DEFAULT_WHATSAPP_TEMPLATES: WhatsAppTemplates = {
   fullPaidBillTemplate: `🙏 *{shopName}* 🙏
 🧾 *Bill No:* {invoiceNo} • 📅 {dateTime}
@@ -97,7 +133,7 @@ export const DEFAULT_WHATSAPP_TEMPLATES: WhatsAppTemplates = {
 {paymentStatusFooter}
 {loyaltySchemeNotice}
 Thank you for choosing our pure Desi Ghee! 🧈
-शुद्ध देसी घी के लिए धन्यवाद!`,
+आपका दिन शुभ हो।`,
 
   pendingBillTemplate: `🙏 *{shopName}* 🙏
 🧾 *Bill No:* {invoiceNo} • 📅 {dateTime}
@@ -111,7 +147,7 @@ Thank you for choosing our pure Desi Ghee! 🧈
 {paymentStatusFooter}
 {loyaltySchemeNotice}
 Thank you for choosing our pure Desi Ghee! 🧈
-शुद्ध देसी घी के लिए धन्यवाद!`,
+आपका दिन शुभ हो।`,
 
   paymentConfirmationTemplate: `🙏 *{shopName}* 🙏
 *भुगतान पावती / PAYMENT CONFIRMATION* ✅
@@ -132,9 +168,58 @@ Thank you for choosing our pure Desi Ghee! 🧈
 • Remaining Balance (शेष बकाया): ₹{remainingBalance}
 -----------------------------------
 
-समय पर भुगतान के लिए आपका बहुत-बहुत धन्यवाद! 🙏
-*{shopName}* • Ph: {shopPhone}`,
+*{shopName}* • Ph: {shopPhone}
+आपका दिन शुभ हो।`,
+
+  onlineOrderConfirmedTemplate: `🙏 *{shopName}* 🙏
+✅ *ONLINE ORDER CONFIRMED / ऑर्डर कन्फर्म* 📦
+🧾 *Order No:* {orderNo} • 📅 {dateTime}
+👤 *Customer:* {customerName}
+
+📦 *Ordered Items:*
+{itemsSummary}
+
+{orderBreakdown}
+📌 *Status:* Order Confirmed (ऑर्डर बुक हो गया है)
+नमस्ते *{customerName}* जी, आपका ऑर्डर कन्फर्म हो गया है। जैसे ही घी घर पर आ जाएगा, हम आपको संदेश भेज देंगे। 🙏
+📞 Contact: {shopPhone}
+
+Thank you for choosing our pure Desi Ghee! 🧈
+आपका दिन शुभ हो।`,
+
+  onlineOrderReadyTemplate: `🙏 *{shopName}* 🙏
+🎉 *ORDER READY FOR PICKUP / घी आ गया है!* 📦
+🧾 *Order No:* {orderNo} • 📅 {dateTime}
+👤 *Customer:* {customerName}
+
+📦 *Ordered Items:*
+{itemsSummary}
+
+{orderBreakdown}
+🏠 *Status:* Ready at Home (घर पर डिलीवरी तैयार है)
+नमस्ते *{customerName}* जी, आपका शुद्ध देसी घी आ चुका है! कृपया आकर अपनी डिलीवरी ले जाएं। 🙏
+कृपया खुले पैसे लेकर आएं।
+{pickupAddressLine}
+
+Thank you for choosing our pure Desi Ghee! 🧈
+आपका दिन शुभ हो।`,
 };
+
+export const LEGACY_V1_ONLINE_ORDER_READY_TEMPLATE = `🙏 *{shopName}* 🙏
+🎉 *ORDER READY FOR PICKUP / घी आ गया है!* 📦
+🧾 *Order No:* {orderNo} • 📅 {dateTime}
+👤 *Customer:* {customerName}
+
+📦 *Ordered Items:*
+{itemsSummary}
+
+{orderBreakdown}
+🏠 *Status:* Ready at Home (घर पर डिलीवरी तैयार है)
+नमस्ते *{customerName}* जी, आपका शुद्ध देसी घी आ चुका है! कृपया आकर अपनी डिलीवरी ले जाएं। 🙏
+{pickupAddressLine}
+
+Thank you for choosing our pure Desi Ghee! 🧈
+आपका दिन शुभ हो।`;
 
 export function substituteVariables(
   template: string,
@@ -216,7 +301,8 @@ export function generateWhatsAppMessage({
       const isLegacy =
         !candidate ||
         candidate === LEGACY_PENDING_BILL_TEMPLATE.trim() ||
-        candidate === LEGACY_V2_BILL_TEMPLATE.trim();
+        candidate === LEGACY_V2_BILL_TEMPLATE.trim() ||
+        candidate === LEGACY_V3_BILL_TEMPLATE.trim();
       templateToUse = isLegacy
         ? DEFAULT_WHATSAPP_TEMPLATES.pendingBillTemplate
         : templates!.pendingBillTemplate!;
@@ -225,7 +311,8 @@ export function generateWhatsAppMessage({
       const isLegacy =
         !candidate ||
         candidate === LEGACY_FULL_PAID_BILL_TEMPLATE.trim() ||
-        candidate === LEGACY_V2_BILL_TEMPLATE.trim();
+        candidate === LEGACY_V2_BILL_TEMPLATE.trim() ||
+        candidate === LEGACY_V3_BILL_TEMPLATE.trim();
       templateToUse = isLegacy
         ? DEFAULT_WHATSAPP_TEMPLATES.fullPaidBillTemplate
         : templates!.fullPaidBillTemplate!;
@@ -310,9 +397,6 @@ export function generateWhatsAppMessage({
       }
     }
     statusLines.push(`📌 *Status:* Unpaid / Partial Payment (उधार)`);
-    statusLines.push(
-      `कृपया अपनी बकाया राशि ₹${Math.round(pendingAmount).toLocaleString('en-IN')} का भुगतान जल्द से जल्द करें।`
-    );
     if (shopPhone) {
       statusLines.push(`UPI / Phone: ${shopPhone}`);
     }
@@ -444,11 +528,18 @@ export function buildSaleWhatsAppMessage(
   });
 
   if (options?.attachmentKind) {
-    msg += `\n\n📎 _${
+    const attachNote = `📎 _${
       options.attachmentKind === 'image'
         ? 'Bill photograph'
         : 'Official Invoice PDF'
     } attached for your records._`;
+    const closingLine = 'आपका दिन शुभ हो।';
+    if (msg.trimEnd().endsWith(closingLine)) {
+      const idx = msg.lastIndexOf(closingLine);
+      msg = `${msg.slice(0, idx).trimEnd()}\n\n${attachNote}\n${closingLine}`;
+    } else {
+      msg += `\n\n${attachNote}`;
+    }
   }
 
   return msg;
@@ -485,10 +576,11 @@ export function generatePaymentReceiptWhatsAppMessage({
   customTemplate?: string;
   template?: string;
 }): string {
+  const rawTpl = customTemplate?.trim() || template?.trim();
   const templateToUse =
-    customTemplate?.trim() ||
-    template?.trim() ||
-    DEFAULT_WHATSAPP_TEMPLATES.paymentConfirmationTemplate;
+    !rawTpl || rawTpl === LEGACY_V3_PAYMENT_CONFIRMATION_TEMPLATE.trim()
+      ? DEFAULT_WHATSAPP_TEMPLATES.paymentConfirmationTemplate
+      : rawTpl;
 
   const paymentModeStr =
     paymentMode === 'cash' ? '💵 Cash (नकद)' : '📱 Online / UPI (ऑनलाइन)';
@@ -519,8 +611,158 @@ export function generatePaymentReceiptWhatsAppMessage({
     if (remainingAdvance && remainingAdvance > 0) {
       extraLines.push(`🏦 *Total Advance Credit Available (अगले बिल में घटेगा):* ₹${remainingAdvance.toLocaleString('en-IN')}`);
     }
-    message += `\n\n${extraLines.join('\n')}`;
+    const closingLine = 'आपका दिन शुभ हो।';
+    if (message.trimEnd().endsWith(closingLine)) {
+      const idx = message.lastIndexOf(closingLine);
+      message = `${message.slice(0, idx).trimEnd()}\n\n${extraLines.join('\n')}\n\n${closingLine}`;
+    } else {
+      message += `\n\n${extraLines.join('\n')}`;
+    }
   }
 
   return message;
 }
+
+export function buildOnlineOrderWhatsAppMessage(
+  order: OnlineOrder,
+  settings: BusinessSettings,
+  options?: {
+    attachmentKind?: 'image' | 'pdf';
+    customer?: Customer | null;
+    previousUdhaar?: number;
+    advanceBalance?: number;
+    customTemplate?: string;
+  }
+): string {
+  const itemsSummary = order.items
+    .map((it) => {
+      const testTag =
+        it.isCream || it.testPercentage ? ` [Test ${it.testPercentage || 51}%]` : '';
+      return `• ${it.productName}${testTag}: ${it.quantityKg.toFixed(3)} kg × ₹${it.ratePerKg} = ₹${Math.round(it.total).toLocaleString('en-IN')}`;
+    })
+    .join('\n');
+
+  const currentOrderAmount = Math.round(order.estimatedTotal);
+  const previousUdhaar = Math.max(
+    0,
+    Math.round(options?.previousUdhaar ?? options?.customer?.pendingBalance ?? 0)
+  );
+  const availableAdvance = Math.max(
+    0,
+    Math.round(options?.advanceBalance ?? options?.customer?.advanceBalance ?? 0)
+  );
+  const grossTotal = currentOrderAmount + previousUdhaar;
+  const advanceAdjusted = Math.min(availableAdvance, grossTotal);
+  const netPayable = Math.max(0, grossTotal - advanceAdjusted);
+  const remainingAdvance = Math.max(0, availableAdvance - advanceAdjusted);
+
+  const breakdownLines: string[] = ['-----------------------------------'];
+  breakdownLines.push(
+    `🧾 *Current Order (आज का ऑर्डर):* ₹${currentOrderAmount.toLocaleString('en-IN')}`
+  );
+  if (previousUdhaar > 0) {
+    breakdownLines.push(
+      `⚠️ *Previous Pending Udhaar (पिछला बकाया):* +₹${previousUdhaar.toLocaleString('en-IN')}`
+    );
+  }
+  if (advanceAdjusted > 0) {
+    breakdownLines.push(
+      `✨ *Advance Adjusted (पुराना एडवांस घटाया):* -₹${advanceAdjusted.toLocaleString('en-IN')}`
+    );
+  }
+  breakdownLines.push(
+    `💰 *${
+      previousUdhaar > 0 || advanceAdjusted > 0
+        ? 'Total Payable on Pickup (कुल देय राशि)'
+        : 'Estimated Amount (अनुमानित राशि)'
+    }:* ₹${netPayable.toLocaleString('en-IN')}`
+  );
+  if (remainingAdvance > 0) {
+    breakdownLines.push(
+      `🏦 *Remaining Advance Credit (शेष एडवांस जमा):* ₹${remainingAdvance.toLocaleString('en-IN')}`
+    );
+  }
+  if (order.notes && order.notes.trim()) {
+    breakdownLines.push(`📝 *Note:* ${order.notes.trim()}`);
+  }
+  breakdownLines.push('-----------------------------------');
+  const orderBreakdown = breakdownLines.join('\n');
+
+  const homeAddr = settings.homeAddress?.trim() || '';
+  const pickupAddressLine = homeAddr
+    ? `📍 *Pickup Address (घर का पता):* ${homeAddr}${settings.phone ? ` • Ph: ${settings.phone}` : ''}`
+    : settings.phone
+    ? `📞 Ph: ${settings.phone}`
+    : '';
+
+  let message = '';
+
+  if (order.status === 'delivered' && !options?.customTemplate) {
+    const lines: string[] = [`🙏 *${settings.shopName}* 🙏`];
+    lines.push(`✅ *ORDER DELIVERED / डिलीवरी पूर्ण* 🎉`);
+    lines.push(`🧾 *Order No:* ${order.orderNo} • 📅 ${formatDateTime(order.createdAt)}`);
+    lines.push(`👤 *Customer:* ${order.customerName}`);
+    lines.push('');
+    lines.push(`📦 *Ordered Items:*`);
+    lines.push(itemsSummary);
+    lines.push('');
+    lines.push(orderBreakdown);
+    lines.push(`✅ *Status:* Delivered (डिलीवरी हो चुकी है)`);
+    if (order.completedInvoiceNo) {
+      lines.push(`🧾 *Final Bill No:* ${order.completedInvoiceNo}`);
+    }
+    lines.push('');
+    lines.push(`Thank you for choosing our pure Desi Ghee! 🧈`);
+    lines.push(`आपका दिन शुभ हो।`);
+    message = lines.join('\n');
+  } else {
+    const rawReadyTpl = settings.whatsAppTemplates?.onlineOrderReadyTemplate?.trim();
+    const resolvedReadyTpl =
+      !rawReadyTpl || rawReadyTpl === LEGACY_V1_ONLINE_ORDER_READY_TEMPLATE.trim()
+        ? DEFAULT_WHATSAPP_TEMPLATES.onlineOrderReadyTemplate
+        : settings.whatsAppTemplates!.onlineOrderReadyTemplate!;
+
+    const templateToUse =
+      options?.customTemplate ||
+      (order.status === 'ready'
+        ? resolvedReadyTpl
+        : settings.whatsAppTemplates?.onlineOrderConfirmedTemplate?.trim() ||
+          DEFAULT_WHATSAPP_TEMPLATES.onlineOrderConfirmedTemplate);
+
+    message = substituteVariables(templateToUse, {
+      shopName: settings.shopName,
+      shopPhone: settings.phone || '',
+      homeAddress: homeAddr,
+      pickupAddressLine,
+      customerName: order.customerName,
+      orderNo: order.orderNo,
+      dateTime: formatDateTime(order.createdAt),
+      itemsSummary,
+      orderBreakdown,
+      currentOrderAmount: currentOrderAmount.toLocaleString('en-IN'),
+      previousUdhaar: previousUdhaar.toLocaleString('en-IN'),
+      advanceAdjusted: advanceAdjusted.toLocaleString('en-IN'),
+      netPayable: netPayable.toLocaleString('en-IN'),
+      remainingAdvance: remainingAdvance.toLocaleString('en-IN'),
+      notes: order.notes?.trim() || '',
+    });
+  }
+
+  if (options?.attachmentKind) {
+    const attachNote = `📎 _${
+      options.attachmentKind === 'image'
+        ? 'Order receipt photograph'
+        : 'Order receipt PDF'
+    } attached for your records._`;
+    const closingLine = 'आपका दिन शुभ हो।';
+    if (message.trimEnd().endsWith(closingLine)) {
+      const idx = message.lastIndexOf(closingLine);
+      message = `${message.slice(0, idx).trimEnd()}\n\n${attachNote}\n${closingLine}`;
+    } else {
+      message += `\n\n${attachNote}`;
+    }
+  }
+
+  return message;
+}
+

@@ -10,8 +10,9 @@ import {
   Smartphone,
   Info,
 } from 'lucide-react';
-import { WhatsAppTemplates } from '../types';
+import { BusinessSettings, Customer, OnlineOrder, WhatsAppTemplates } from '../types';
 import {
+  buildOnlineOrderWhatsAppMessage,
   DEFAULT_WHATSAPP_TEMPLATES,
   generateWhatsAppMessage,
   substituteVariables,
@@ -22,9 +23,15 @@ interface WhatsAppTemplatesSettingsProps {
   onChangeTemplates: (newTemplates: WhatsAppTemplates) => void;
   shopName: string;
   shopPhone?: string;
+  homeAddress?: string;
 }
 
-type TemplateConditionKey = 'fullPaid' | 'pending' | 'receipt';
+type TemplateConditionKey =
+  | 'fullPaid'
+  | 'pending'
+  | 'receipt'
+  | 'orderConfirmed'
+  | 'orderReady';
 
 interface VariableTag {
   tag: string;
@@ -64,15 +71,33 @@ const RECEIPT_VARIABLES: VariableTag[] = [
   { tag: '{note}', label: 'Payment Note', labelHindi: 'टिप्पणी / नोट' },
 ];
 
+const ORDER_VARIABLES: VariableTag[] = [
+  { tag: '{shopName}', label: 'Shop Name', labelHindi: 'दुकान का नाम' },
+  { tag: '{shopPhone}', label: 'Contact Phone', labelHindi: 'संपर्क नंबर' },
+  { tag: '{homeAddress}', label: 'Home Address', labelHindi: 'घर का पता' },
+  { tag: '{pickupAddressLine}', label: 'Pickup Address Line', labelHindi: 'पिकअप पता पंक्ति' },
+  { tag: '{customerName}', label: 'Customer Name', labelHindi: 'ग्राहक का नाम' },
+  { tag: '{orderNo}', label: 'Order No', labelHindi: 'ऑर्डर नंबर' },
+  { tag: '{dateTime}', label: 'Date & Time', labelHindi: 'दिनांक व समय' },
+  { tag: '{itemsSummary}', label: 'Ordered Items', labelHindi: 'ऑर्डर सामान' },
+  { tag: '{orderBreakdown}', label: 'Full Order Breakdown', labelHindi: 'ऑर्डर व उधार हिसाब' },
+  { tag: '{currentOrderAmount}', label: 'Current Order', labelHindi: 'आज का ऑर्डर' },
+  { tag: '{previousUdhaar}', label: 'Previous Udhaar', labelHindi: 'पिछला उधार' },
+  { tag: '{advanceAdjusted}', label: 'Advance Adjusted', labelHindi: 'एडवांस घटाया' },
+  { tag: '{netPayable}', label: 'Total Payable', labelHindi: 'कुल देय राशि' },
+  { tag: '{remainingAdvance}', label: 'Remaining Advance', labelHindi: 'शेष एडवांस' },
+  { tag: '{notes}', label: 'Order Note', labelHindi: 'नोट / टिप्पणी' },
+];
+
 export const WhatsAppTemplatesSettings: React.FC<WhatsAppTemplatesSettingsProps> = ({
   templates,
   onChangeTemplates,
   shopName,
   shopPhone = '9876543210',
+  homeAddress = '',
 }) => {
   const [activeTab, setActiveTab] = useState<TemplateConditionKey>('fullPaid');
   const [copiedPreview, setCopiedPreview] = useState(false);
-  const [showPreview, setShowPreview] = useState(true);
   const [confirmReset, setConfirmReset] = useState<'current' | 'all' | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -85,6 +110,27 @@ export const WhatsAppTemplatesSettings: React.FC<WhatsAppTemplatesSettingsProps>
     paymentConfirmationTemplate:
       templates?.paymentConfirmationTemplate ||
       DEFAULT_WHATSAPP_TEMPLATES.paymentConfirmationTemplate,
+    onlineOrderConfirmedTemplate:
+      templates?.onlineOrderConfirmedTemplate ||
+      DEFAULT_WHATSAPP_TEMPLATES.onlineOrderConfirmedTemplate,
+    onlineOrderReadyTemplate:
+      templates?.onlineOrderReadyTemplate ||
+      DEFAULT_WHATSAPP_TEMPLATES.onlineOrderReadyTemplate,
+  };
+
+  const getTemplateValueForTab = (tab: TemplateConditionKey): string => {
+    switch (tab) {
+      case 'fullPaid':
+        return currentTemplates.fullPaidBillTemplate;
+      case 'pending':
+        return currentTemplates.pendingBillTemplate;
+      case 'receipt':
+        return currentTemplates.paymentConfirmationTemplate;
+      case 'orderConfirmed':
+        return currentTemplates.onlineOrderConfirmedTemplate;
+      case 'orderReady':
+        return currentTemplates.onlineOrderReadyTemplate;
+    }
   };
 
   const handleUpdateCurrentField = (newText: string) => {
@@ -98,10 +144,20 @@ export const WhatsAppTemplatesSettings: React.FC<WhatsAppTemplatesSettingsProps>
         ...currentTemplates,
         pendingBillTemplate: newText,
       });
-    } else {
+    } else if (activeTab === 'receipt') {
       onChangeTemplates({
         ...currentTemplates,
         paymentConfirmationTemplate: newText,
+      });
+    } else if (activeTab === 'orderConfirmed') {
+      onChangeTemplates({
+        ...currentTemplates,
+        onlineOrderConfirmedTemplate: newText,
+      });
+    } else {
+      onChangeTemplates({
+        ...currentTemplates,
+        onlineOrderReadyTemplate: newText,
       });
     }
   };
@@ -117,10 +173,20 @@ export const WhatsAppTemplatesSettings: React.FC<WhatsAppTemplatesSettingsProps>
         ...currentTemplates,
         pendingBillTemplate: DEFAULT_WHATSAPP_TEMPLATES.pendingBillTemplate,
       });
-    } else {
+    } else if (activeTab === 'receipt') {
       onChangeTemplates({
         ...currentTemplates,
         paymentConfirmationTemplate: DEFAULT_WHATSAPP_TEMPLATES.paymentConfirmationTemplate,
+      });
+    } else if (activeTab === 'orderConfirmed') {
+      onChangeTemplates({
+        ...currentTemplates,
+        onlineOrderConfirmedTemplate: DEFAULT_WHATSAPP_TEMPLATES.onlineOrderConfirmedTemplate,
+      });
+    } else {
+      onChangeTemplates({
+        ...currentTemplates,
+        onlineOrderReadyTemplate: DEFAULT_WHATSAPP_TEMPLATES.onlineOrderReadyTemplate,
       });
     }
     setConfirmReset(null);
@@ -136,12 +202,7 @@ export const WhatsAppTemplatesSettings: React.FC<WhatsAppTemplatesSettingsProps>
   // Insert a tag at cursor position inside the active textarea
   const handleInsertTag = (tag: string) => {
     const el = textareaRef.current;
-    const currentText =
-      activeTab === 'fullPaid'
-        ? currentTemplates.fullPaidBillTemplate
-        : activeTab === 'pending'
-        ? currentTemplates.pendingBillTemplate
-        : currentTemplates.paymentConfirmationTemplate;
+    const currentText = getTemplateValueForTab(activeTab);
 
     if (!el) {
       handleUpdateCurrentField(currentText + ' ' + tag);
@@ -202,7 +263,7 @@ export const WhatsAppTemplatesSettings: React.FC<WhatsAppTemplatesSettingsProps>
         loyaltyExpiry: '14/02/2027',
         customTemplate: currentTemplates.pendingBillTemplate,
       });
-    } else {
+    } else if (activeTab === 'receipt') {
       return substituteVariables(currentTemplates.paymentConfirmationTemplate, {
         shopName: shopName || 'Shri Krishna Desi Ghee Bhandar',
         customerName: 'Mukesh Verma (Halwai)',
@@ -214,6 +275,56 @@ export const WhatsAppTemplatesSettings: React.FC<WhatsAppTemplatesSettingsProps>
         remainingBalance: '₹2,220',
         note: 'GPay payment received',
         shopPhone: shopPhone || '9876543210',
+      });
+    } else {
+      const sampleOrder: OnlineOrder = {
+        id: 'sample_ord',
+        orderNo: 'ORD-108',
+        customerId: 'sample_cust',
+        customerName: 'Ramesh Sharma',
+        customerPhone: '9820011223',
+        createdAt: new Date().toISOString(),
+        items: [
+          {
+            productId: 'prod_1',
+            productName: 'Pure Desi Cow Ghee',
+            quantityKg: 2,
+            ratePerKg: 680,
+            total: 1360,
+            isGhee: true,
+          },
+        ],
+        estimatedTotal: 1360,
+        totalGheeKg: 2,
+        status: activeTab === 'orderReady' ? 'ready' : 'confirmed',
+        notes: 'Pack in 1kg jars',
+      };
+      const sampleCustomer: Customer = {
+        id: 'sample_cust',
+        name: 'Ramesh Sharma',
+        phone: '9820011223',
+        createdAt: new Date().toISOString(),
+        totalPurchases: 4500,
+        totalGheeBoughtKg: 3,
+        pendingBalance: 500,
+        advanceBalance: 0,
+      };
+      const previewSettings: BusinessSettings = {
+        shopName: shopName || 'Shri Krishna Desi Ghee Bhandar',
+        ownerName: 'Owner',
+        phone: shopPhone || '9876543210',
+        address: 'Main Market, Shop No. 12',
+        homeAddress: homeAddress?.trim() || 'House No. 12, Shanti Nagar (Home Pickup)',
+        gheeSchemeDiscountPercent: 5,
+        schemeMonthsPerKg: 1,
+        loyaltySchemeEnabled: true,
+      };
+      return buildOnlineOrderWhatsAppMessage(sampleOrder, previewSettings, {
+        customer: sampleCustomer,
+        customTemplate:
+          activeTab === 'orderReady'
+            ? currentTemplates.onlineOrderReadyTemplate
+            : currentTemplates.onlineOrderConfirmedTemplate,
       });
     }
   };
@@ -242,14 +353,14 @@ export const WhatsAppTemplatesSettings: React.FC<WhatsAppTemplatesSettingsProps>
     });
   };
 
-  const currentVal =
-    activeTab === 'fullPaid'
-      ? currentTemplates.fullPaidBillTemplate
-      : activeTab === 'pending'
-      ? currentTemplates.pendingBillTemplate
-      : currentTemplates.paymentConfirmationTemplate;
+  const currentVal = getTemplateValueForTab(activeTab);
 
-  const currentVars = activeTab === 'receipt' ? RECEIPT_VARIABLES : BILL_VARIABLES;
+  const currentVars =
+    activeTab === 'receipt'
+      ? RECEIPT_VARIABLES
+      : activeTab === 'orderConfirmed' || activeTab === 'orderReady'
+      ? ORDER_VARIABLES
+      : BILL_VARIABLES;
 
   return (
     <div className="space-y-4 text-xs text-stone-800">
@@ -261,12 +372,12 @@ export const WhatsAppTemplatesSettings: React.FC<WhatsAppTemplatesSettingsProps>
             <span>Customizable WhatsApp Message Formats (व्हाट्सएप संदेश प्रारूप)</span>
           </div>
           <p className="text-[11px] text-emerald-800 leading-relaxed">
-            Manage your own WhatsApp messages for all 3 situations. You can customize text, add your own Hindi/English greetings, and click tags like <code className="bg-emerald-100 px-1 py-0.2 rounded font-mono font-bold text-emerald-900">{'{totalAmount}'}</code> to insert dynamic values.
+            Manage your own WhatsApp messages for all 5 situations (Bills, Payment Receipts &amp; Online Orders). Customize text, add your own greetings, and click tags like <code className="bg-emerald-100 px-1 py-0.2 rounded font-mono font-bold text-emerald-900">{'{totalAmount}'}</code> to insert dynamic values.
           </p>
         </div>
         {confirmReset === 'all' ? (
           <div className="shrink-0 flex items-center gap-1.5 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-lg">
-            <span className="text-[10.5px] text-rose-800 font-bold">Reset all 3?</span>
+            <span className="text-[10.5px] text-rose-800 font-bold">Reset all 5?</span>
             <button
               type="button"
               onClick={executeResetAll}
@@ -287,7 +398,7 @@ export const WhatsAppTemplatesSettings: React.FC<WhatsAppTemplatesSettingsProps>
             type="button"
             onClick={() => setConfirmReset('all')}
             className="shrink-0 px-2.5 py-1 text-[10.5px] rounded-lg border border-emerald-300 text-emerald-800 hover:bg-emerald-100 transition flex items-center gap-1 font-medium cursor-pointer"
-            title="Reset all 3 formats to original defaults"
+            title="Reset all 5 formats to original defaults"
           >
             <RotateCcw className="w-3 h-3" />
             <span>Reset All Defaults</span>
@@ -296,7 +407,7 @@ export const WhatsAppTemplatesSettings: React.FC<WhatsAppTemplatesSettingsProps>
       </div>
 
       {/* Condition Switcher Tabs */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
         <button
           type="button"
           onClick={() => setActiveTab('fullPaid')}
@@ -306,10 +417,10 @@ export const WhatsAppTemplatesSettings: React.FC<WhatsAppTemplatesSettingsProps>
               : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-700'
           }`}
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-1">
             <span className="font-black text-xs">1. Full Paid Bill</span>
             <span
-              className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase ${
+              className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase shrink-0 ${
                 activeTab === 'fullPaid'
                   ? 'bg-emerald-800 text-emerald-100'
                   : 'bg-stone-200 text-stone-700'
@@ -336,10 +447,10 @@ export const WhatsAppTemplatesSettings: React.FC<WhatsAppTemplatesSettingsProps>
               : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-700'
           }`}
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-1">
             <span className="font-black text-xs">2. Due / Partial Bill</span>
             <span
-              className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase ${
+              className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase shrink-0 ${
                 activeTab === 'pending'
                   ? 'bg-amber-800 text-amber-100'
                   : 'bg-stone-200 text-stone-700'
@@ -366,10 +477,10 @@ export const WhatsAppTemplatesSettings: React.FC<WhatsAppTemplatesSettingsProps>
               : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-700'
           }`}
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-1">
             <span className="font-black text-xs">3. Payment Confirmation</span>
             <span
-              className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase ${
+              className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase shrink-0 ${
                 activeTab === 'receipt'
                   ? 'bg-indigo-800 text-indigo-100'
                   : 'bg-stone-200 text-stone-700'
@@ -384,6 +495,66 @@ export const WhatsAppTemplatesSettings: React.FC<WhatsAppTemplatesSettingsProps>
             }`}
           >
             Sent when collecting Udhaar payment in Customer Khata
+          </p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('orderConfirmed')}
+          className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between gap-1.5 ${
+            activeTab === 'orderConfirmed'
+              ? 'bg-sky-700 text-white border-sky-800 shadow-xs'
+              : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-700'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-1">
+            <span className="font-black text-xs">4. Order Confirmed</span>
+            <span
+              className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase shrink-0 ${
+                activeTab === 'orderConfirmed'
+                  ? 'bg-sky-900 text-sky-100'
+                  : 'bg-stone-200 text-stone-700'
+              }`}
+            >
+              ऑर्डर कन्फर्म
+            </span>
+          </div>
+          <p
+            className={`text-[10px] leading-tight ${
+              activeTab === 'orderConfirmed' ? 'text-sky-100' : 'text-stone-500'
+            }`}
+          >
+            Sent when a new Online Order is booked with pending/advance summary
+          </p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('orderReady')}
+          className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between gap-1.5 ${
+            activeTab === 'orderReady'
+              ? 'bg-teal-700 text-white border-teal-800 shadow-xs'
+              : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-700'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-1">
+            <span className="font-black text-xs">5. Order Ready / Pickup</span>
+            <span
+              className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase shrink-0 ${
+                activeTab === 'orderReady'
+                  ? 'bg-teal-900 text-teal-100'
+                  : 'bg-stone-200 text-stone-700'
+              }`}
+            >
+              घी घर आ गया
+            </span>
+          </div>
+          <p
+            className={`text-[10px] leading-tight ${
+              activeTab === 'orderReady' ? 'text-teal-100' : 'text-stone-500'
+            }`}
+          >
+            Sent when ghee arrives at home with your Home Pickup Address
           </p>
         </button>
       </div>

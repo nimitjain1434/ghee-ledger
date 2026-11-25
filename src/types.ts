@@ -158,6 +158,8 @@ export interface WhatsAppTemplates {
   fullPaidBillTemplate: string;
   pendingBillTemplate: string;
   paymentConfirmationTemplate: string;
+  onlineOrderConfirmedTemplate: string;
+  onlineOrderReadyTemplate: string;
 }
 
 export interface BusinessSettings {
@@ -165,10 +167,31 @@ export interface BusinessSettings {
   ownerName: string;
   phone: string;
   address: string;
+  homeAddress?: string;
   gheeSchemeDiscountPercent: number; // default 5%
   schemeMonthsPerKg: number; // default 1 month per 1 kg
   loyaltySchemeEnabled: boolean; // toggle loyalty scheme on/off
   whatsAppTemplates?: Partial<WhatsAppTemplates>;
+}
+
+export type OnlineOrderStatus = 'confirmed' | 'ready' | 'delivered';
+
+export interface OnlineOrder {
+  id: string;
+  orderNo: string;
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  createdAt: string;
+  readyAt?: string;
+  deliveredAt?: string;
+  items: SaleItem[];
+  estimatedTotal: number;
+  totalGheeKg: number;
+  status: OnlineOrderStatus;
+  notes?: string;
+  completedSaleId?: string;
+  completedInvoiceNo?: string;
 }
 
 export interface AppData {
@@ -180,5 +203,6 @@ export interface AppData {
   purchasesExpenses: PurchaseExpense[];
   cashDrawer: Record<string, CashDrawerEntry>;
   denominations: Record<string, DenominationCount>;
+  onlineOrders: OnlineOrder[];
 }
 

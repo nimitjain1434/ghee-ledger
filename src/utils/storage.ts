@@ -5,6 +5,7 @@ import {
   Customer,
   DenominationCount,
   KhataPayment,
+  OnlineOrder,
   ProductItem,
   PurchaseExpense,
   Sale,
@@ -14,7 +15,10 @@ import {
   DEFAULT_WHATSAPP_TEMPLATES,
   LEGACY_FULL_PAID_BILL_TEMPLATE,
   LEGACY_PENDING_BILL_TEMPLATE,
+  LEGACY_V1_ONLINE_ORDER_READY_TEMPLATE,
   LEGACY_V2_BILL_TEMPLATE,
+  LEGACY_V3_BILL_TEMPLATE,
+  LEGACY_V3_PAYMENT_CONFIRMATION_TEMPLATE,
 } from './formatters';
 
 const STORAGE_KEYS = {
@@ -26,6 +30,7 @@ const STORAGE_KEYS = {
   PURCHASES_EXPENSES: 'ghee_app_purchases_expenses',
   CASH_DRAWER: 'ghee_app_cash_drawer',
   DENOMINATIONS: 'ghee_app_denominations',
+  ONLINE_ORDERS: 'ghee_app_online_orders',
   SEED_VERSION: 'ghee_app_seed_version',
 };
 
@@ -34,6 +39,7 @@ export const DEFAULT_SETTINGS: BusinessSettings = {
   ownerName: 'Papaji (Shop Owner)',
   phone: '9876543210',
   address: 'Main Market, Shop No. 12',
+  homeAddress: '',
   gheeSchemeDiscountPercent: 5,
   schemeMonthsPerKg: 1, // 1 kg = 1 month (30 days)
   loyaltySchemeEnabled: true,
@@ -334,16 +340,34 @@ export function loadAllData(): AppData {
   const migratedFullPaid =
     !trimmedFullPaid ||
     trimmedFullPaid === LEGACY_FULL_PAID_BILL_TEMPLATE.trim() ||
-    trimmedFullPaid === LEGACY_V2_BILL_TEMPLATE.trim()
+    trimmedFullPaid === LEGACY_V2_BILL_TEMPLATE.trim() ||
+    trimmedFullPaid === LEGACY_V3_BILL_TEMPLATE.trim()
       ? DEFAULT_WHATSAPP_TEMPLATES.fullPaidBillTemplate
       : rawTemplates.fullPaidBillTemplate;
   const trimmedPending = rawTemplates.pendingBillTemplate?.trim();
   const migratedPending =
     !trimmedPending ||
     trimmedPending === LEGACY_PENDING_BILL_TEMPLATE.trim() ||
-    trimmedPending === LEGACY_V2_BILL_TEMPLATE.trim()
+    trimmedPending === LEGACY_V2_BILL_TEMPLATE.trim() ||
+    trimmedPending === LEGACY_V3_BILL_TEMPLATE.trim()
       ? DEFAULT_WHATSAPP_TEMPLATES.pendingBillTemplate
       : rawTemplates.pendingBillTemplate;
+  const trimmedReceipt = rawTemplates.paymentConfirmationTemplate?.trim();
+  const migratedReceipt =
+    !trimmedReceipt ||
+    trimmedReceipt === LEGACY_V3_PAYMENT_CONFIRMATION_TEMPLATE.trim()
+      ? DEFAULT_WHATSAPP_TEMPLATES.paymentConfirmationTemplate
+      : rawTemplates.paymentConfirmationTemplate;
+
+  const migratedOrderConfirmed = rawTemplates.onlineOrderConfirmedTemplate?.trim()
+    ? rawTemplates.onlineOrderConfirmedTemplate
+    : DEFAULT_WHATSAPP_TEMPLATES.onlineOrderConfirmedTemplate;
+  const trimmedOrderReady = rawTemplates.onlineOrderReadyTemplate?.trim();
+  const migratedOrderReady =
+    !trimmedOrderReady ||
+    trimmedOrderReady === LEGACY_V1_ONLINE_ORDER_READY_TEMPLATE.trim()
+      ? DEFAULT_WHATSAPP_TEMPLATES.onlineOrderReadyTemplate
+      : rawTemplates.onlineOrderReadyTemplate;
 
   const settings: BusinessSettings = {
     ...DEFAULT_SETTINGS,
@@ -354,6 +378,9 @@ export function loadAllData(): AppData {
       ...rawTemplates,
       fullPaidBillTemplate: migratedFullPaid,
       pendingBillTemplate: migratedPending,
+      paymentConfirmationTemplate: migratedReceipt,
+      onlineOrderConfirmedTemplate: migratedOrderConfirmed,
+      onlineOrderReadyTemplate: migratedOrderReady,
     },
   };
 
@@ -364,6 +391,7 @@ export function loadAllData(): AppData {
   let savedDrawer = loadFromStorage<Record<string, CashDrawerEntry>>(STORAGE_KEYS.CASH_DRAWER, {});
   let savedDenoms = loadFromStorage<Record<string, DenominationCount>>(STORAGE_KEYS.DENOMINATIONS, {});
   let savedCustomers = loadFromStorage<Customer[]>(STORAGE_KEYS.CUSTOMERS, []);
+  const savedOnlineOrders = loadFromStorage<OnlineOrder[]>(STORAGE_KEYS.ONLINE_ORDERS, []);
 
   // If seed not set yet and no records exist, seed initial sample data on very first run
   if (!seedVersion && savedSales.length === 0) {
@@ -412,6 +440,7 @@ export function loadAllData(): AppData {
     purchasesExpenses: savedPurchases,
     cashDrawer: savedDrawer,
     denominations: savedDenoms,
+    onlineOrders: Array.isArray(savedOnlineOrders) ? savedOnlineOrders : [],
   };
 }
 
@@ -424,6 +453,7 @@ export function saveAllData(data: AppData): void {
   saveToStorage(STORAGE_KEYS.PURCHASES_EXPENSES, data.purchasesExpenses);
   saveToStorage(STORAGE_KEYS.CASH_DRAWER, data.cashDrawer);
   saveToStorage(STORAGE_KEYS.DENOMINATIONS, data.denominations);
+  saveToStorage(STORAGE_KEYS.ONLINE_ORDERS, data.onlineOrders || []);
 }
 
 export function exportBackupJSON(data: AppData): void {
@@ -448,6 +478,7 @@ export function resetToSampleData(): AppData {
     purchasesExpenses: historical.purchasesExpenses,
     cashDrawer: historical.cashDrawer,
     denominations: historical.denominations,
+    onlineOrders: [],
   };
   localStorage.setItem(STORAGE_KEYS.SEED_VERSION, 'fy_3yr_v1');
   saveAllData(data);
@@ -476,6 +507,7 @@ export function resetToZeroData(currentSettings?: BusinessSettings, currentProdu
       },
     },
     denominations: { [todayISO]: INITIAL_DENOMINATIONS },
+    onlineOrders: [],
   };
   localStorage.setItem(STORAGE_KEYS.SEED_VERSION, 'fresh_zero');
   saveAllData(data);

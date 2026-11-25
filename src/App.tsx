@@ -6,6 +6,8 @@ import {
   Customer,
   DenominationCount,
   KhataPayment,
+  OnlineOrder,
+  OnlineOrderStatus,
   ProductItem,
   PurchaseExpense,
   Sale,
@@ -25,6 +27,8 @@ import { SalesLedgerTab } from './components/SalesLedgerTab';
 import { CustomerKhataTab } from './components/CustomerKhataTab';
 import { PurchasesExpensesTab } from './components/PurchasesExpensesTab';
 import { ReportsSummaryTab } from './components/ReportsSummaryTab';
+import { PendingOrdersTab } from './components/PendingOrdersTab';
+import { OnlineOrderReceiptModal } from './components/OnlineOrderReceiptModal';
 import { NewSaleModal } from './components/NewSaleModal';
 import { InvoiceModal } from './components/InvoiceModal';
 import { QuickFatTestCalculatorModal } from './components/QuickFatTestCalculatorModal';
@@ -36,8 +40,12 @@ export default function App() {
 
   // Modals
   const [isNewSaleOpen, setIsNewSaleOpen] = useState(false);
+  const [newModalInitialMode, setNewModalInitialMode] = useState<'bill' | 'online_order'>('bill');
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
+  const [editingOrder, setEditingOrder] = useState<OnlineOrder | null>(null);
+  const [completingOrder, setCompletingOrder] = useState<OnlineOrder | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<Sale | null>(null);
+  const [selectedOrderReceipt, setSelectedOrderReceipt] = useState<OnlineOrder | null>(null);
   const [isFatCalcOpen, setIsFatCalcOpen] = useState(false);
 
   // Pre-selected customer for quick sale from Khata tab
@@ -118,7 +126,21 @@ export default function App() {
     (totalTodayPurchasesOnline + (todayDrawer.withdrawnBank || 0));
 
   // Handlers
-  const handleSaveSale = (saleToSave: Sale, updatedCustomer?: Customer | null) => {
+  const openNewModal = (mode: 'bill' | 'online_order' = 'bill') => {
+    setEditingSale(null);
+    setEditingOrder(null);
+    setCompletingOrder(null);
+    setPreSelectedCustomerPhone('');
+    setPreSelectedCustomerId('');
+    setNewModalInitialMode(mode);
+    setIsNewSaleOpen(true);
+  };
+
+  const handleSaveSale = (
+    saleToSave: Sale,
+    updatedCustomer?: Customer | null,
+    completedOrderId?: string
+  ) => {
     let newCustomers = [...data.customers];
     if (updatedCustomer && updatedCustomer.id !== 'cust_walkin') {
       const existingIndex = data.customers.findIndex((c) => c.id === updatedCustomer.id);
@@ -135,19 +157,119 @@ export default function App() {
         ? prev.sales.map((s) => (s.id === saleToSave.id ? saleToSave : s))
         : [saleToSave, ...prev.sales];
 
+      const updatedOrders = completedOrderId
+        ? (prev.onlineOrders || []).map((ord) =>
+            ord.id === completedOrderId
+              ? {
+                  ...ord,
+                  status: 'delivered' as const,
+                  deliveredAt: saleToSave.date,
+                  completedSaleId: saleToSave.id,
+                  completedInvoiceNo: saleToSave.invoiceNo,
+                  customerId: saleToSave.customerId,
+                  customerName: saleToSave.customerName,
+                  customerPhone: saleToSave.customerPhone,
+                }
+              : ord
+          )
+        : prev.onlineOrders || [];
+
       return {
         ...prev,
         sales: newSales,
         customers: newCustomers,
+        onlineOrders: updatedOrders,
       };
     });
 
     setEditingSale(null);
-    // Immediately open invoice view so father can print or send on WhatsApp
+    setCompletingOrder(null);
+    // Immediately open invoice view so user can print or send on WhatsApp
     setSelectedInvoice(saleToSave);
   };
 
+  const handleSaveOnlineOrder = (orderToSave: OnlineOrder, customerToSync?: Customer | null) => {
+    let newCustomers = [...data.customers];
+    if (customerToSync && customerToSync.id !== 'cust_walkin') {
+      const existingIndex = data.customers.findIndex((c) => c.id === customerToSync.id);
+      if (existingIndex >= 0) {
+        newCustomers[existingIndex] = customerToSync;
+      } else {
+        newCustomers = [customerToSync, ...newCustomers];
+      }
+    }
+
+    setData((prev) => {
+      const currentOrders = prev.onlineOrders || [];
+      const isExisting = currentOrders.some((o) => o.id === orderToSave.id);
+      const nextOrders = isExisting
+        ? currentOrders.map((o) => (o.id === orderToSave.id ? orderToSave : o))
+        : [orderToSave, ...currentOrders];
+
+      return {
+        ...prev,
+        onlineOrders: nextOrders,
+        customers: newCustomers,
+      };
+    });
+
+    setEditingOrder(null);
+    // Immediately show Order Receipt & WhatsApp confirmation share sheet
+    setSelectedOrderReceipt(orderToSave);
+  };
+
+  const handleUpdateOrderStatus = (orderId: string, newStatus: OnlineOrderStatus) => {
+    setData((prev) => ({
+      ...prev,
+      onlineOrders: (prev.onlineOrders || []).map((ord) =>
+        ord.id === orderId
+          ? {
+              ...ord,
+              status: newStatus,
+              readyAt: newStatus === 'ready' ? ord.readyAt || new Date().toISOString() : ord.readyAt,
+            }
+          : ord
+      ),
+    }));
+    setSelectedOrderReceipt((prev) =>
+      prev && prev.id === orderId
+        ? {
+            ...prev,
+            status: newStatus,
+            readyAt: newStatus === 'ready' ? prev.readyAt || new Date().toISOString() : prev.readyAt,
+          }
+        : prev
+    );
+  };
+
+  const handleDeleteOnlineOrder = (orderId: string) => {
+    setData((prev) => ({
+      ...prev,
+      onlineOrders: (prev.onlineOrders || []).filter((ord) => ord.id !== orderId),
+    }));
+  };
+
+  const handleDeliverOnlineOrder = (order: OnlineOrder) => {
+    setSelectedOrderReceipt(null);
+    setEditingSale(null);
+    setEditingOrder(null);
+    setCompletingOrder(order);
+    setNewModalInitialMode('bill');
+    setIsNewSaleOpen(true);
+  };
+
+  const handleEditOnlineOrder = (order: OnlineOrder) => {
+    setEditingSale(null);
+    setCompletingOrder(null);
+    setEditingOrder(order);
+    setNewModalInitialMode('online_order');
+    setIsNewSaleOpen(true);
+  };
+
   const handleEditSale = (sale: Sale) => {
+    setEditingOrder(null);
+    setCompletingOrder(null);
+    setNewModalInitialMode('bill');
     setEditingSale(sale);
     setIsNewSaleOpen(true);
   };
@@ -220,6 +342,15 @@ export default function App() {
             }
           : kp
       ),
+      onlineOrders: (prev.onlineOrders || []).map((ord) =>
+        ord.customerId === updatedCustomer.id
+          ? {
+              ...ord,
+              customerName: updatedCustomer.name,
+              customerPhone: updatedCustomer.phone,
+            }
+          : ord
+      ),
     }));
   };
 
@@ -291,14 +422,15 @@ export default function App() {
       try {
         const parsed = JSON.parse(e.target?.result as string);
         if (parsed.settings && parsed.sales) {
-          setData(parsed);
-          saveAllData(parsed);
-          alert('Backup restored successfully!');
-        } else {
-          alert('Invalid backup file format.');
+          const normalized = {
+            ...parsed,
+            onlineOrders: Array.isArray(parsed.onlineOrders) ? parsed.onlineOrders : [],
+          };
+          setData(normalized);
+          saveAllData(normalized);
         }
       } catch (err) {
-        alert('Could not read backup file.');
+        console.error('Could not read backup file:', err);
       }
     };
     reader.readAsText(file);
@@ -316,12 +448,16 @@ export default function App() {
 
   const handleSelectCustomerForSale = (cust: Customer) => {
     setEditingSale(null);
+    setEditingOrder(null);
+    setCompletingOrder(null);
+    setNewModalInitialMode('bill');
     setPreSelectedCustomerPhone(cust.phone);
     setPreSelectedCustomerId(cust.id);
     setIsNewSaleOpen(true);
   };
 
   const pendingCustomerCount = data.customers.filter((c) => c.pendingBalance > 0).length;
+  const pendingOrderCount = (data.onlineOrders || []).filter((o) => o.status !== 'delivered').length;
 
   return (
     <div className="min-h-screen bg-stone-100 flex flex-col font-sans text-stone-900 selection:bg-amber-200">
@@ -331,12 +467,7 @@ export default function App() {
         products={data.products}
         expectedDrawerCash={liveDrawerCash}
         onlineBankBalance={liveOnlineBank}
-        onOpenNewSale={() => {
-          setEditingSale(null);
-          setPreSelectedCustomerPhone('');
-          setPreSelectedCustomerId('');
-          setIsNewSaleOpen(true);
-        }}
+        onOpenNewSale={() => openNewModal('bill')}
         onOpenFatCalculator={() => setIsFatCalcOpen(true)}
         onUpdateSettings={handleUpdateSettings}
         onUpdateProducts={handleUpdateProducts}
@@ -394,10 +525,23 @@ export default function App() {
             products={data.products}
             onUpdateDrawer={handleUpdateDrawer}
             onUpdateDenominations={handleUpdateDenominations}
-            onOpenNewSale={() => {
-              setEditingSale(null);
-              setIsNewSaleOpen(true);
-            }}
+            onOpenNewSale={() => openNewModal('bill')}
+          />
+        )}
+
+        {activeTab === 'orders' && (
+          <PendingOrdersTab
+            orders={data.onlineOrders || []}
+            sales={data.sales}
+            customers={data.customers}
+            settings={data.settings}
+            onOpenNewOrder={() => openNewModal('online_order')}
+            onEditOrder={handleEditOnlineOrder}
+            onUpdateStatus={handleUpdateOrderStatus}
+            onDeliverAndBill={handleDeliverOnlineOrder}
+            onViewOrderReceipt={(order) => setSelectedOrderReceipt(order)}
+            onViewFinalBill={(sale) => setSelectedInvoice(sale)}
+            onDeleteOrder={handleDeleteOnlineOrder}
           />
         )}
 
@@ -406,12 +550,7 @@ export default function App() {
             sales={data.sales}
             settings={data.settings}
             onViewInvoice={(sale) => setSelectedInvoice(sale)}
-            onOpenNewSale={() => {
-              setEditingSale(null);
-              setPreSelectedCustomerPhone('');
-              setPreSelectedCustomerId('');
-              setIsNewSaleOpen(true);
-            }}
+            onOpenNewSale={() => openNewModal('bill')}
             onEditSale={handleEditSale}
             onDeleteSale={handleDeleteSale}
           />
@@ -456,14 +595,9 @@ export default function App() {
       {/* Floating Quick Action Button on Mobile */}
       <button
         id="btn-floating-new-sale"
-        onClick={() => {
-          setEditingSale(null);
-          setPreSelectedCustomerPhone('');
-          setPreSelectedCustomerId('');
-          setIsNewSaleOpen(true);
-        }}
+        onClick={() => openNewModal('bill')}
         className="md:hidden fixed bottom-20 right-4 z-40 w-14 h-14 rounded-full bg-amber-600 hover:bg-amber-700 active:scale-95 text-white shadow-xl flex items-center justify-center border-2 border-white transition cursor-pointer"
-        title="Create New Sale Bill"
+        title="New Bill or Online Order"
       >
         <Plus className="w-7 h-7" />
       </button>
@@ -472,22 +606,20 @@ export default function App() {
       <BottomNav
         activeTab={activeTab}
         onSelectTab={setActiveTab}
-        onOpenNewSale={() => {
-          setEditingSale(null);
-          setPreSelectedCustomerPhone('');
-          setPreSelectedCustomerId('');
-          setIsNewSaleOpen(true);
-        }}
+        onOpenNewSale={() => openNewModal('bill')}
         pendingCustomerCount={pendingCustomerCount}
+        pendingOrderCount={pendingOrderCount}
       />
 
-      {/* New / Edit Sale POS Modal */}
+      {/* New / Edit Sale & Online Order Modal */}
       {isNewSaleOpen && (
         <NewSaleModal
           isOpen={isNewSaleOpen}
           onClose={() => {
             setIsNewSaleOpen(false);
             setEditingSale(null);
+            setEditingOrder(null);
+            setCompletingOrder(null);
             setPreSelectedCustomerPhone('');
             setPreSelectedCustomerId('');
           }}
@@ -497,7 +629,30 @@ export default function App() {
           initialCustomerPhone={preSelectedCustomerPhone}
           initialCustomerId={preSelectedCustomerId}
           saleToEdit={editingSale}
+          initialMode={newModalInitialMode}
+          orderToEdit={editingOrder}
+          orderToComplete={completingOrder}
           onSaveSale={handleSaveSale}
+          onSaveOnlineOrder={handleSaveOnlineOrder}
+        />
+      )}
+
+      {/* Online Order Receipt & WhatsApp Notification Modal */}
+      {selectedOrderReceipt && (
+        <OnlineOrderReceiptModal
+          order={selectedOrderReceipt}
+          customer={
+            data.customers.find(
+              (c) =>
+                c.id === selectedOrderReceipt.customerId ||
+                (selectedOrderReceipt.customerPhone &&
+                  c.phone === selectedOrderReceipt.customerPhone)
+            ) || null
+          }
+          settings={data.settings}
+          onClose={() => setSelectedOrderReceipt(null)}
+          onChangeStatus={handleUpdateOrderStatus}
+          onDeliverAndBill={handleDeliverOnlineOrder}
         />
       )}
 

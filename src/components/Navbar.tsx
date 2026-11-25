@@ -146,10 +146,10 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               id="btn-nav-new-sale"
               onClick={onOpenNewSale}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-95 text-white font-bold text-xs shadow-sm transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-95 text-white font-bold text-xs shadow-sm transition whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span className="hidden xs:inline font-bold">New Bill (नया बिल)</span>
+              <span className="hidden xs:inline font-bold">New Bill / Order</span>
             </button>
 
             <button
@@ -354,13 +354,31 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
 
                   <div>
-                    <label className="block font-medium text-stone-700 mb-1">Shop Address</label>
+                    <label className="block font-medium text-stone-700 mb-1">Shop Address (दुकान का पता)</label>
                     <input
                       type="text"
                       value={tempSettings.address}
                       onChange={(e) => setTempSettings({ ...tempSettings, address: e.target.value })}
                       className="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-stone-700 mb-1">
+                      Home / Pickup Address (घर का पता - होम डिलीवरी पिकअप के लिए)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g., House No. 12, Shanti Nagar (near ...)"
+                      value={tempSettings.homeAddress || ''}
+                      onChange={(e) =>
+                        setTempSettings({ ...tempSettings, homeAddress: e.target.value })
+                      }
+                      className="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs"
+                    />
+                    <span className="text-[11px] text-stone-500 block mt-1">
+                      Displayed in WhatsApp &ldquo;Order Ready for Pickup&rdquo; messages instead of the shop address.
+                    </span>
                   </div>
 
                   <div className="pt-3 border-t border-stone-200 flex justify-end gap-2">
@@ -393,6 +411,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     }}
                     shopName={tempSettings.shopName}
                     shopPhone={tempSettings.phone}
+                    homeAddress={tempSettings.homeAddress}
                   />
 
                   <div className="pt-3 border-t border-stone-200 flex flex-col sm:flex-row items-center justify-between gap-3">

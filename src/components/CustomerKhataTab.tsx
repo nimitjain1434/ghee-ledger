@@ -292,7 +292,7 @@ export const CustomerKhataTab: React.FC<CustomerKhataTabProps> = ({
     if (loyalty.isEligible) {
       msg += `🌟 *Desi Ghee Repeat Customer Scheme:*\nआपके पास *5% DISCOUNT* सक्रिय है जो *${loyalty.expiresAtFormatted}* (${loyalty.daysRemaining} दिन शेष) तक मान्य है!\n\n`;
     }
-    msg += `धन्यवाद! 🧈 • ${shopSettings.shopName}`;
+    msg += `🧈 *${shopSettings.shopName}*\nआपका दिन शुभ हो।`;
 
     let cleanPhone = customer.phone.replace(/\D/g, '');
     if (!cleanPhone) {

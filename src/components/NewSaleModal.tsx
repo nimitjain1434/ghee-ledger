@@ -11,8 +11,20 @@ import {
   Clock,
   ArrowRight,
   Wallet,
+  ShoppingBag,
+  Receipt,
+  PackageCheck,
 } from 'lucide-react';
-import { BusinessSettings, Customer, PaymentMode, ProductItem, Sale, SaleItem } from '../types';
+import {
+  BusinessSettings,
+  Customer,
+  OnlineOrder,
+  OnlineOrderStatus,
+  PaymentMode,
+  ProductItem,
+  Sale,
+  SaleItem,
+} from '../types';
 import {
   calculateNewLoyaltyExpiry,
   checkCustomerLoyalty,
@@ -35,7 +47,11 @@ interface NewSaleModalProps {
   initialCustomerPhone?: string;
   initialCustomerId?: string;
   saleToEdit?: Sale | null;
-  onSaveSale: (sale: Sale, updatedCustomer?: Customer | null) => void;
+  initialMode?: 'bill' | 'online_order';
+  orderToEdit?: OnlineOrder | null;
+  orderToComplete?: OnlineOrder | null;
+  onSaveSale: (sale: Sale, updatedCustomer?: Customer | null, completedOrderId?: string) => void;
+  onSaveOnlineOrder?: (order: OnlineOrder, customerToSync?: Customer | null) => void;
 }
 
 export const NewSaleModal: React.FC<NewSaleModalProps> = ({
@@ -47,14 +63,28 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   initialCustomerPhone = '',
   initialCustomerId = '',
   saleToEdit,
+  initialMode = 'bill',
+  orderToEdit,
+  orderToComplete,
   onSaveSale,
+  onSaveOnlineOrder,
 }) => {
+  const [entryMode, setEntryMode] = useState<'bill' | 'online_order'>(() => {
+    if (orderToEdit) return 'online_order';
+    if (saleToEdit || orderToComplete) return 'bill';
+    return initialMode;
+  });
+  const [orderStatus, setOrderStatus] = useState<OnlineOrderStatus>(() =>
+    orderToEdit ? orderToEdit.status : 'confirmed'
+  );
+
   // Customer State - Hooks must be called unconditionally at top level
-  const [phone, setPhone] = useState(saleToEdit ? saleToEdit.customerPhone : initialCustomerPhone);
-  const [customerName, setCustomerName] = useState(saleToEdit ? saleToEdit.customerName : '');
+  const sourceRecord = saleToEdit || orderToComplete || orderToEdit;
+  const [phone, setPhone] = useState(sourceRecord ? sourceRecord.customerPhone : initialCustomerPhone);
+  const [customerName, setCustomerName] = useState(sourceRecord ? sourceRecord.customerName : '');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
-    saleToEdit && saleToEdit.customerId && saleToEdit.customerId !== 'cust_walkin'
-      ? saleToEdit.customerId
+    sourceRecord && sourceRecord.customerId && sourceRecord.customerId !== 'cust_walkin'
+      ? sourceRecord.customerId
       : initialCustomerId || null
   );
   const [matchedCustomer, setMatchedCustomer] = useState<Customer | null>(null);
@@ -108,8 +138,9 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   };
 
   const [items, setItems] = useState<SaleItem[]>(() => {
-    if (saleToEdit && saleToEdit.items && saleToEdit.items.length > 0) {
-      return saleToEdit.items.map((it) => ({ ...it }));
+    const itemSource = saleToEdit || orderToComplete || orderToEdit;
+    if (itemSource && itemSource.items && itemSource.items.length > 0) {
+      return itemSource.items.map((it) => ({ ...it }));
     }
     return [createDefaultSaleItem(defaultProduct)];
   });
@@ -135,12 +166,21 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   );
   const [cashAmount, setCashAmount] = useState<number>(saleToEdit ? saleToEdit.cashReceived : 0);
   const [onlineAmount, setOnlineAmount] = useState<number>(saleToEdit ? saleToEdit.onlineReceived : 0);
-  const [notes, setNotes] = useState(saleToEdit ? saleToEdit.notes || '' : '');
+  const [notes, setNotes] = useState(
+    saleToEdit
+      ? saleToEdit.notes || ''
+      : orderToComplete
+      ? orderToComplete.notes || ''
+      : orderToEdit
+      ? orderToEdit.notes || ''
+      : ''
+  );
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Sync state if saleToEdit or initialCustomerPhone changes
+  // Sync state if saleToEdit, orderToEdit, orderToComplete, or initialMode changes
   useEffect(() => {
     if (saleToEdit) {
+      setEntryMode('bill');
       setPhone(saleToEdit.customerPhone || '');
       setCustomerName(saleToEdit.customerName || '');
       setSelectedCustomerId(
@@ -158,7 +198,39 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       setCashAmount(saleToEdit.cashReceived);
       setOnlineAmount(saleToEdit.onlineReceived);
       setNotes(saleToEdit.notes || '');
+    } else if (orderToComplete) {
+      setEntryMode('bill');
+      setPhone(orderToComplete.customerPhone || '');
+      setCustomerName(orderToComplete.customerName || '');
+      setSelectedCustomerId(
+        orderToComplete.customerId && orderToComplete.customerId !== 'cust_walkin'
+          ? orderToComplete.customerId
+          : null
+      );
+      setItems(orderToComplete.items.map((it) => ({ ...it })));
+      setApplyLoyaltyDiscount(false);
+      setManualDiscountPercent(0);
+      setPaymentMode('cash');
+      setApplyAdvanceBalance(true);
+      setIncludePreviousUdhaar(true);
+      setNotes(orderToComplete.notes || '');
+    } else if (orderToEdit) {
+      setEntryMode('online_order');
+      setOrderStatus(orderToEdit.status);
+      setPhone(orderToEdit.customerPhone || '');
+      setCustomerName(orderToEdit.customerName || '');
+      setSelectedCustomerId(
+        orderToEdit.customerId && orderToEdit.customerId !== 'cust_walkin'
+          ? orderToEdit.customerId
+          : null
+      );
+      setItems(orderToEdit.items.map((it) => ({ ...it })));
+      setApplyLoyaltyDiscount(false);
+      setManualDiscountPercent(0);
+      setNotes(orderToEdit.notes || '');
     } else {
+      setEntryMode(initialMode);
+      setOrderStatus('confirmed');
       setPhone(initialCustomerPhone);
       setCustomerName('');
       setSelectedCustomerId(initialCustomerId || null);
@@ -174,7 +246,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       setNotes('');
     }
     setValidationError(null);
-  }, [saleToEdit, initialCustomerPhone, initialCustomerId]);
+  }, [saleToEdit, orderToEdit, orderToComplete, initialMode, initialCustomerPhone, initialCustomerId]);
 
   // Handle customer lookup by selected ID or phone number
   useEffect(() => {
@@ -615,7 +687,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     setValidationError(null);
 
     if (items.length === 0 || finalTotal <= 0) {
-      setValidationError('Please add valid items with amount to the bill.');
+      setValidationError('Please add valid items with amount.');
       return;
     }
 
@@ -631,6 +703,70 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       customerName.trim() ||
       (isAnonymous ? 'Walk-in Customer (नकद ग्राहक)' : `Customer ${cleanPhone.slice(-4)}`);
 
+    // Branch 1: Online Order Entry / Edit
+    if (entryMode === 'online_order') {
+      if (isAnonymous && !customerName.trim()) {
+        setValidationError(
+          'Online Order requires a Customer Name or Mobile Number so you can track and send WhatsApp updates.'
+        );
+        return;
+      }
+
+      const orderId = orderToEdit ? orderToEdit.id : `ord_${Date.now()}`;
+      const orderNo = orderToEdit
+        ? orderToEdit.orderNo
+        : `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
+      const resolvedCustomerId = matchedCustomer
+        ? matchedCustomer.id
+        : cleanPhone
+        ? `cust_${cleanPhone}`
+        : `cust_${Date.now()}`;
+
+      const newOrder: OnlineOrder = {
+        id: orderId,
+        orderNo,
+        customerId: resolvedCustomerId,
+        customerName: finalCustomerName,
+        customerPhone: cleanPhone,
+        createdAt: orderToEdit ? orderToEdit.createdAt : new Date().toISOString(),
+        readyAt:
+          orderStatus === 'ready'
+            ? orderToEdit?.readyAt || new Date().toISOString()
+            : orderToEdit?.readyAt,
+        items,
+        estimatedTotal: finalTotal,
+        totalGheeKg: Math.round(totalGheeKg * 1000) / 1000,
+        status: orderStatus,
+        notes: notes.trim(),
+      };
+
+      let customerToSync: Customer | null = null;
+      if (matchedCustomer) {
+        customerToSync = {
+          ...matchedCustomer,
+          name: customerName.trim() || matchedCustomer.name,
+          phone: cleanPhone || matchedCustomer.phone,
+        };
+      } else if (cleanPhone || customerName.trim()) {
+        customerToSync = {
+          id: resolvedCustomerId,
+          name: finalCustomerName,
+          phone: cleanPhone,
+          address: '',
+          createdAt: new Date().toISOString(),
+          totalPurchases: 0,
+          totalGheeBoughtKg: 0,
+          pendingBalance: 0,
+          advanceBalance: 0,
+        };
+      }
+
+      onSaveOnlineOrder?.(newOrder, customerToSync);
+      onClose();
+      return;
+    }
+
+    // Branch 2: Standard Sale / Final Bill
     if (pendingAmount > 0 && isAnonymous && !customerName.trim()) {
       setValidationError('Udhaar (उधार) requires a Customer Name or Mobile Number so it can be tracked in Khata.');
       return;
@@ -736,7 +872,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       };
     }
 
-    onSaveSale(newSale, updatedCustomer);
+    onSaveSale(newSale, updatedCustomer, orderToComplete?.id);
     onClose();
   };
 
@@ -746,32 +882,112 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2 sm:p-4 overflow-y-auto backdrop-blur-xs">
       <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl border border-stone-200 overflow-hidden my-auto max-h-[96vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-amber-700 via-amber-600 to-amber-700 text-white">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-amber-800/60 flex items-center justify-center font-bold text-lg">
-              🧈
+        <div
+          className={`flex items-center justify-between px-5 py-3.5 text-white ${
+            entryMode === 'online_order'
+              ? 'bg-gradient-to-r from-sky-800 via-sky-700 to-sky-800'
+              : 'bg-gradient-to-r from-amber-700 via-amber-600 to-amber-700'
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <div
+              className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-lg ${
+                entryMode === 'online_order' ? 'bg-sky-900/60' : 'bg-amber-800/60'
+              }`}
+            >
+              {entryMode === 'online_order' ? '📦' : '🧈'}
             </div>
             <div>
               <h2 className="text-base font-bold leading-tight">
-                {saleToEdit ? `Edit Sale Bill #${saleToEdit.invoiceNo} (बिल संशोधन)` : 'New Sale & Ghee Bill (नया बिल)'}
+                {saleToEdit
+                  ? `Edit Sale Bill #${saleToEdit.invoiceNo} (बिल संशोधन)`
+                  : orderToComplete
+                  ? `Deliver & Bill Order #${orderToComplete.orderNo} (डिलीवरी व बिल)`
+                  : orderToEdit
+                  ? `Edit Online Order #${orderToEdit.orderNo}`
+                  : entryMode === 'online_order'
+                  ? 'New Online Order (ऑनलाइन घी ऑर्डर)'
+                  : 'New Sale & Ghee Bill (नया बिल)'}
               </h2>
-              <p className="text-xs text-amber-100">
-                {isSchemeEnabled
+              <p className={`text-xs ${entryMode === 'online_order' ? 'text-sky-100' : 'text-amber-100'}`}>
+                {entryMode === 'online_order'
+                  ? 'Book customer pre-order, share receipt & notify when ghee arrives home'
+                  : isSchemeEnabled
                   ? `Automatic ${schemeDiscountPercent}% Loyalty Scheme & Cash Counter`
                   : 'Cash & Ledger Billing (Loyalty Scheme is OFF)'}
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-amber-100 hover:text-white hover:bg-amber-800/50 transition"
+            className={`p-1.5 rounded-lg transition cursor-pointer ${
+              entryMode === 'online_order'
+                ? 'text-sky-100 hover:text-white hover:bg-sky-900/50'
+                : 'text-amber-100 hover:text-white hover:bg-amber-800/50'
+            }`}
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
+        {/* Mode Toggle: New Bill vs Online Order */}
+        {!saleToEdit && !orderToComplete && !orderToEdit && (
+          <div className="px-4 sm:px-6 pt-3 pb-1 bg-stone-50 border-b border-stone-200 shrink-0">
+            <div className="grid grid-cols-2 gap-1.5 p-1 bg-stone-200/80 rounded-xl">
+              <button
+                id="toggle-mode-bill"
+                type="button"
+                onClick={() => {
+                  setEntryMode('bill');
+                  setValidationError(null);
+                }}
+                className={`py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                  entryMode === 'bill'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'text-stone-700 hover:text-stone-900 hover:bg-white/60'
+                }`}
+              >
+                <Receipt className="w-4 h-4 shrink-0" />
+                <span>New Bill (नया बिल)</span>
+              </button>
+
+              <button
+                id="toggle-mode-online-order"
+                type="button"
+                onClick={() => {
+                  setEntryMode('online_order');
+                  setValidationError(null);
+                }}
+                className={`py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                  entryMode === 'online_order'
+                    ? 'bg-sky-700 text-white shadow-xs'
+                    : 'text-stone-700 hover:text-stone-900 hover:bg-white/60'
+                }`}
+              >
+                <ShoppingBag className="w-4 h-4 shrink-0" />
+                <span>Online Order (ऑनलाइन ऑर्डर)</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Scrollable Body */}
         <form onSubmit={handleSubmit} noValidate className="p-4 sm:p-6 overflow-y-auto space-y-4 text-stone-800">
+          {orderToComplete && (
+            <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 flex items-center gap-2.5 text-sky-950 text-xs">
+              <PackageCheck className="w-5 h-5 text-sky-700 shrink-0" />
+              <div>
+                <span className="font-bold block">
+                  Completing Delivery for Order #{orderToComplete.orderNo}
+                </span>
+                <span className="text-[11px] text-sky-800">
+                  Adjust final weight if needed, enter Cash/Online payment received, and generate final bill.
+                </span>
+              </div>
+            </div>
+          )}
+
           {validationError && (
             <div className="bg-rose-50 border border-rose-300 rounded-xl p-3 flex items-center gap-2 text-rose-800 text-xs font-semibold">
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
@@ -1370,288 +1586,385 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
             )}
           </div>
 
-          {/* Payment & Cash Counter Breakdown */}
-          <div className="bg-stone-50 rounded-xl p-3.5 border border-stone-200 space-y-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-stone-500 block">
-              3. Payment & Ledger (भुगतान व रोकड़)
-            </span>
+          {/* Section 3: Either Online Order Confirmation OR Payment & Cash Counter Breakdown */}
+          {entryMode === 'online_order' ? (
+            <div className="bg-sky-50/70 rounded-xl p-3.5 border border-sky-200 space-y-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-sky-900 block">
+                3. Order Status &amp; Confirmation (ऑर्डर स्थिति व रसीद)
+              </span>
 
-            {/* Total calculation strip */}
-            <div className="space-y-1.5 bg-white p-3 rounded-lg border border-stone-200 text-xs">
-              <div className="flex justify-between text-stone-600">
-                <span>Subtotal:</span>
-                <span className="font-mono">{formatCurrency(subtotal)}</span>
-              </div>
-              {discountAmount > 0 && (
-                <div className="flex justify-between text-emerald-700 font-medium">
-                  <span>
-                    {isSchemeEnabled && applyLoyaltyDiscount
-                      ? `Loyalty Scheme ${schemeDiscountPercent}% Discount:`
-                      : `Special Discount (${discountPercent}%):`}
-                  </span>
-                  <span className="font-mono">- {formatCurrency(discountAmount)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-sm font-bold text-stone-900 pt-1 border-t border-stone-200">
-                <span>Current Bill Total (आज का बिल):</span>
-                <span className="font-mono text-base text-amber-800">
-                  {formatCurrency(finalTotal)}
-                </span>
-              </div>
-              {previousUdhaarIncluded > 0 && (
-                <div className="flex justify-between text-rose-700 font-bold">
-                  <span>Previous Pending Udhaar Added (पिछला उधार जोड़ा):</span>
-                  <span className="font-mono">+ {formatCurrency(previousUdhaarIncluded)}</span>
-                </div>
-              )}
-              {advanceUsed > 0 && (
-                <div className="flex justify-between text-teal-700 font-bold">
-                  <span>Advance Deducted (पुराना जमा घटाया):</span>
-                  <span className="font-mono">- {formatCurrency(advanceUsed)}</span>
-                </div>
-              )}
-              {(previousUdhaarIncluded > 0 || advanceUsed > 0) && (
-                <div className="flex justify-between text-sm font-black text-stone-950 pt-1.5 border-t border-dashed border-stone-300">
-                  <span>Total Payable Today (कुल देय राशि):</span>
-                  <span className="font-mono text-base text-stone-950">
-                    {formatCurrency(netPayable)}
+              <div className="bg-white p-3 rounded-lg border border-sky-200 text-xs space-y-1.5">
+                {discountAmount > 0 && (
+                  <>
+                    <div className="flex justify-between text-stone-600">
+                      <span>Subtotal:</span>
+                      <span className="font-mono">{formatCurrency(subtotal)}</span>
+                    </div>
+                    <div className="flex justify-between text-emerald-700 font-medium">
+                      <span>
+                        {isSchemeEnabled && applyLoyaltyDiscount
+                          ? `Loyalty Scheme ${schemeDiscountPercent}% Discount:`
+                          : `Special Discount (${discountPercent}%):`}
+                      </span>
+                      <span className="font-mono">- {formatCurrency(discountAmount)}</span>
+                    </div>
+                  </>
+                )}
+                <div className="flex justify-between text-sm font-bold text-stone-900">
+                  <span>Estimated Order Amount (अनुमानित राशि):</span>
+                  <span className="font-mono text-base text-sky-800">
+                    {formatCurrency(finalTotal)}
                   </span>
                 </div>
-              )}
-            </div>
-
-            {/* Payment Mode Selector */}
-            <div>
-              <label className="block text-xs font-medium text-stone-700 mb-1.5">
-                Payment Mode (भुगतान माध्यम)
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPaymentMode('cash')}
-                  className={`py-2 px-3 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition ${
-                    paymentMode === 'cash'
-                      ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
-                      : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-100'
-                  }`}
-                >
-                  <span className="text-base">💵</span>
-                  <span>Cash / नकद (गल्ला)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPaymentMode('online')}
-                  className={`py-2 px-3 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition ${
-                    paymentMode === 'online'
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                      : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-100'
-                  }`}
-                >
-                  <span className="text-base">📱</span>
-                  <span>Online / UPI (बैंक)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPaymentMode('split')}
-                  className={`py-2 px-3 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition ${
-                    paymentMode === 'split'
-                      ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                      : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-100'
-                  }`}
-                >
-                  <span className="text-base">🔀</span>
-                  <span>Split (नकद + ऑनलाइन)</span>
-                </button>
+                {(availablePreviousUdhaar > 0 || availableAdvance > 0) && (
+                  <p className="text-[11px] text-stone-600">
+                    {availablePreviousUdhaar > 0 && `Prev. Udhaar: ${formatCurrency(availablePreviousUdhaar)} `}
+                    {availableAdvance > 0 && `Available Advance: ${formatCurrency(availableAdvance)} `}
+                    — adjusts automatically when customer picks up delivery.
+                  </p>
+                )}
               </div>
-            </div>
 
-            {/* Amount Received & Split Details */}
-            {paymentMode === 'split' ? (
-              <div className="grid grid-cols-2 gap-3 pt-1">
-                <div>
-                  <label className="block text-xs font-medium text-stone-700 mb-1">
-                    Cash in Drawer (गल्ले में नकद) ₹
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    min="0"
-                    placeholder="0"
-                    value={cashAmount === 0 ? '' : cashAmount}
-                    onChange={(e) => handleCashChange(e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
-                    className="w-full py-1.5 px-3 rounded-lg border border-stone-300 text-sm font-bold text-amber-900 bg-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-stone-700 mb-1">
-                    Online in Bank (बैंक / UPI) ₹
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    min="0"
-                    placeholder="0"
-                    value={onlineAmount === 0 ? '' : onlineAmount}
-                    onChange={(e) => handleOnlineChange(e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
-                    className="w-full py-1.5 px-3 rounded-lg border border-stone-300 text-sm font-bold text-indigo-900 bg-white"
-                  />
-                </div>
-              </div>
-            ) : (
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-medium text-stone-700">
-                    Amount Received Now (अभी प्राप्त हुआ) ₹
-                  </label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {previousUdhaarIncluded > 0 && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const onlyToday = Math.max(0, finalTotal - advanceUsed);
-                            setAmountReceived(onlyToday);
-                            if (paymentMode === 'cash') setCashAmount(onlyToday);
-                            if (paymentMode === 'online') setOnlineAmount(onlyToday);
-                          }}
-                          className="text-[11px] text-stone-600 hover:underline font-semibold cursor-pointer"
-                          title="Pay only today's bill and keep previous Udhaar separate"
-                        >
-                          Today&apos;s Bill ({formatCurrency(Math.max(0, finalTotal - advanceUsed))})
-                        </button>
-                        <span className="text-stone-300">|</span>
-                      </>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAmountReceived(netPayable);
-                        if (paymentMode === 'cash') setCashAmount(netPayable);
-                        if (paymentMode === 'online') setOnlineAmount(netPayable);
-                      }}
-                      className="text-[11px] text-amber-700 hover:underline font-bold cursor-pointer"
-                    >
-                      Full Paid
-                    </button>
-                    <span className="text-stone-300">|</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAmountReceived(0);
-                        if (paymentMode === 'cash') setCashAmount(0);
-                        if (paymentMode === 'online') setOnlineAmount(0);
-                      }}
-                      className="text-[11px] text-rose-600 hover:underline font-bold cursor-pointer"
-                    >
-                      Full Udhaar
-                    </button>
-                  </div>
+                <label className="block text-xs font-semibold text-stone-700 mb-1.5">
+                  Order Status (ऑर्डर की स्थिति)
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setOrderStatus('confirmed')}
+                    className={`py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                      orderStatus === 'confirmed'
+                        ? 'bg-sky-700 text-white border-sky-700 shadow-xs'
+                        : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-100'
+                    }`}
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Confirmed (दुकान से मंगाया)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setOrderStatus('ready')}
+                    className={`py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                      orderStatus === 'ready'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-100'
+                    }`}
+                  >
+                    <PackageCheck className="w-4 h-4" />
+                    <span>Ready at Home (घी आ गया)</span>
+                  </button>
                 </div>
+              </div>
+
+              <div>
                 <input
-                  type="number"
-                  step="any"
-                  min="0"
-                  placeholder="0"
-                  value={amountReceived === 0 ? '' : amountReceived}
-                  onChange={(e) => {
-                    const val = e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0);
-                    setAmountReceived(val);
-                    if (paymentMode === 'cash') setCashAmount(val);
-                    if (paymentMode === 'online') setOnlineAmount(val);
-                  }}
-                  className="w-full py-2 px-3 rounded-lg border border-stone-300 text-base font-bold text-stone-900 bg-white focus:border-amber-500"
+                  type="text"
+                  placeholder="Order Note (optional, e.g. Requested on phone, pack in 2kg jar)"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full py-2 px-3 rounded-lg border border-stone-200 text-xs bg-white placeholder:text-stone-400"
                 />
-                <p className="text-[10px] text-stone-400 mt-1">
-                  Tip: Enter more than {formatCurrency(netPayable)} if customer pays extra money to save as advance for next time.
-                </p>
               </div>
-            )}
-
-            {/* Pending (Udhaar) or Extra Advance Credit alert */}
-            {totalBalanceDue > 0 ? (
-              <div className="bg-rose-50 border border-rose-300 rounded-xl p-3 flex items-center justify-between gap-2 text-rose-900">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
-                  <div>
-                    <span className="text-xs font-bold block">
-                      {previousUdhaarIncluded > 0
-                        ? 'Total Remaining Balance / कुल बकाया (उधार):'
-                        : 'Pending Balance / Udhaar (उधार):'}
-                    </span>
-                    <span className="text-[11px] text-rose-700 block">
-                      {previousUdhaarIncluded > 0
-                        ? `New Bill Due: ${formatCurrency(pendingAmount)} + Unpaid Prev. Udhaar: ${formatCurrency(
-                            Math.max(0, previousUdhaarIncluded - previousUdhaarCleared)
-                          )} → Saved to Khata`
-                        : `This will be saved to ${customerName || 'customer'}'s khata ledger`}
-                    </span>
-                  </div>
-                </div>
-                <span className="text-base font-black font-mono text-rose-700 shrink-0">
-                  {formatCurrency(totalBalanceDue)}
-                </span>
-              </div>
-            ) : extraPaymentAdded > 0 ? (
-              <div className="bg-teal-50 border border-teal-300 rounded-xl p-3 flex items-center justify-between text-teal-950">
-                <div className="flex items-center gap-2">
-                  <Wallet className="w-5 h-5 text-teal-600 shrink-0" />
-                  <div>
-                    <span className="text-xs font-bold block">
-                      Extra Money Paid → Saved as Advance (एडवांस जमा):
-                    </span>
-                    <span className="text-[11px] text-teal-800">
-                      Linked to {customerName || 'customer'}&apos;s Khata &amp; auto-deducted on next bill!
-                    </span>
-                  </div>
-                </div>
-                <span className="text-base font-black font-mono text-teal-700">
-                  +{formatCurrency(extraPaymentAdded)}
-                </span>
-              </div>
-            ) : (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 flex items-center gap-2 text-xs text-emerald-800">
-                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>
-                  {previousUdhaarCleared > 0 && advanceUsed > 0
-                    ? `All dues cleared! ₹${advanceUsed} Advance used + ₹${amountReceived} paid (includes ₹${previousUdhaarCleared} old Udhaar cleared).`
-                    : previousUdhaarCleared > 0
-                    ? `Full bill + ₹${previousUdhaarCleared} previous Udhaar cleared! Total paid: ₹${amountReceived}.`
-                    : advanceUsed > 0
-                    ? `Settled using ₹${advanceUsed} Advance${amountReceived > 0 ? ` + ₹${amountReceived} paid` : ''}!`
-                    : 'Full payment received! No pending balance.'}
-                </span>
-              </div>
-            )}
-
-            {/* Notes */}
-            <div>
-              <input
-                type="text"
-                placeholder="Notes (optional, e.g. packaging tin, delivery note)"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full py-1.5 px-3 rounded-lg border border-stone-200 text-xs bg-white placeholder:text-stone-400"
-              />
             </div>
-          </div>
+          ) : (
+            <div className="bg-stone-50 rounded-xl p-3.5 border border-stone-200 space-y-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-stone-500 block">
+                3. Payment & Ledger (भुगतान व रोकड़)
+              </span>
+
+              {/* Total calculation strip */}
+              <div className="space-y-1.5 bg-white p-3 rounded-lg border border-stone-200 text-xs">
+                <div className="flex justify-between text-stone-600">
+                  <span>Subtotal:</span>
+                  <span className="font-mono">{formatCurrency(subtotal)}</span>
+                </div>
+                {discountAmount > 0 && (
+                  <div className="flex justify-between text-emerald-700 font-medium">
+                    <span>
+                      {isSchemeEnabled && applyLoyaltyDiscount
+                        ? `Loyalty Scheme ${schemeDiscountPercent}% Discount:`
+                        : `Special Discount (${discountPercent}%):`}
+                    </span>
+                    <span className="font-mono">- {formatCurrency(discountAmount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-sm font-bold text-stone-900 pt-1 border-t border-stone-200">
+                  <span>Current Bill Total (आज का बिल):</span>
+                  <span className="font-mono text-base text-amber-800">
+                    {formatCurrency(finalTotal)}
+                  </span>
+                </div>
+                {previousUdhaarIncluded > 0 && (
+                  <div className="flex justify-between text-rose-700 font-bold">
+                    <span>Previous Pending Udhaar Added (पिछला उधार जोड़ा):</span>
+                    <span className="font-mono">+ {formatCurrency(previousUdhaarIncluded)}</span>
+                  </div>
+                )}
+                {advanceUsed > 0 && (
+                  <div className="flex justify-between text-teal-700 font-bold">
+                    <span>Advance Deducted (पुराना जमा घटाया):</span>
+                    <span className="font-mono">- {formatCurrency(advanceUsed)}</span>
+                  </div>
+                )}
+                {(previousUdhaarIncluded > 0 || advanceUsed > 0) && (
+                  <div className="flex justify-between text-sm font-black text-stone-950 pt-1.5 border-t border-dashed border-stone-300">
+                    <span>Total Payable Today (कुल देय राशि):</span>
+                    <span className="font-mono text-base text-stone-950">
+                      {formatCurrency(netPayable)}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Payment Mode Selector */}
+              <div>
+                <label className="block text-xs font-medium text-stone-700 mb-1.5">
+                  Payment Mode (भुगतान माध्यम)
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMode('cash')}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition ${
+                      paymentMode === 'cash'
+                        ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                        : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-100'
+                    }`}
+                  >
+                    <span className="text-base">💵</span>
+                    <span>Cash / नकद (गल्ला)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMode('online')}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition ${
+                      paymentMode === 'online'
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                        : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-100'
+                    }`}
+                  >
+                    <span className="text-base">📱</span>
+                    <span>Online / UPI (बैंक)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMode('split')}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition ${
+                      paymentMode === 'split'
+                        ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                        : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-100'
+                    }`}
+                  >
+                    <span className="text-base">🔀</span>
+                    <span>Split (नकद + ऑनलाइन)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Amount Received & Split Details */}
+              {paymentMode === 'split' ? (
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-xs font-medium text-stone-700 mb-1">
+                      Cash in Drawer (गल्ले में नकद) ₹
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      placeholder="0"
+                      value={cashAmount === 0 ? '' : cashAmount}
+                      onChange={(e) => handleCashChange(e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
+                      className="w-full py-1.5 px-3 rounded-lg border border-stone-300 text-sm font-bold text-amber-900 bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-stone-700 mb-1">
+                      Online in Bank (बैंक / UPI) ₹
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      placeholder="0"
+                      value={onlineAmount === 0 ? '' : onlineAmount}
+                      onChange={(e) => handleOnlineChange(e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
+                      className="w-full py-1.5 px-3 rounded-lg border border-stone-300 text-sm font-bold text-indigo-900 bg-white"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-medium text-stone-700">
+                      Amount Received Now (अभी प्राप्त हुआ) ₹
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {previousUdhaarIncluded > 0 && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const onlyToday = Math.max(0, finalTotal - advanceUsed);
+                              setAmountReceived(onlyToday);
+                              if (paymentMode === 'cash') setCashAmount(onlyToday);
+                              if (paymentMode === 'online') setOnlineAmount(onlyToday);
+                            }}
+                            className="text-[11px] text-stone-600 hover:underline font-semibold cursor-pointer"
+                            title="Pay only today's bill and keep previous Udhaar separate"
+                          >
+                            Today&apos;s Bill ({formatCurrency(Math.max(0, finalTotal - advanceUsed))})
+                          </button>
+                          <span className="text-stone-300">|</span>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAmountReceived(netPayable);
+                          if (paymentMode === 'cash') setCashAmount(netPayable);
+                          if (paymentMode === 'online') setOnlineAmount(netPayable);
+                        }}
+                        className="text-[11px] text-amber-700 hover:underline font-bold cursor-pointer"
+                      >
+                        Full Paid
+                      </button>
+                      <span className="text-stone-300">|</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAmountReceived(0);
+                          if (paymentMode === 'cash') setCashAmount(0);
+                          if (paymentMode === 'online') setOnlineAmount(0);
+                        }}
+                        className="text-[11px] text-rose-600 hover:underline font-bold cursor-pointer"
+                      >
+                        Full Udhaar
+                      </button>
+                    </div>
+                  </div>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    placeholder="0"
+                    value={amountReceived === 0 ? '' : amountReceived}
+                    onChange={(e) => {
+                      const val = e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0);
+                      setAmountReceived(val);
+                      if (paymentMode === 'cash') setCashAmount(val);
+                      if (paymentMode === 'online') setOnlineAmount(val);
+                    }}
+                    className="w-full py-2 px-3 rounded-lg border border-stone-300 text-base font-bold text-stone-900 bg-white focus:border-amber-500"
+                  />
+                  <p className="text-[10px] text-stone-400 mt-1">
+                    Tip: Enter more than {formatCurrency(netPayable)} if customer pays extra money to save as advance for next time.
+                  </p>
+                </div>
+              )}
+
+              {/* Pending (Udhaar) or Extra Advance Credit alert */}
+              {totalBalanceDue > 0 ? (
+                <div className="bg-rose-50 border border-rose-300 rounded-xl p-3 flex items-center justify-between gap-2 text-rose-900">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                    <div>
+                      <span className="text-xs font-bold block">
+                        {previousUdhaarIncluded > 0
+                          ? 'Total Remaining Balance / कुल बकाया (उधार):'
+                          : 'Pending Balance / Udhaar (उधार):'}
+                      </span>
+                      <span className="text-[11px] text-rose-700 block">
+                        {previousUdhaarIncluded > 0
+                          ? `New Bill Due: ${formatCurrency(pendingAmount)} + Unpaid Prev. Udhaar: ${formatCurrency(
+                              Math.max(0, previousUdhaarIncluded - previousUdhaarCleared)
+                            )} → Saved to Khata`
+                          : `This will be saved to ${customerName || 'customer'}'s khata ledger`}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-base font-black font-mono text-rose-700 shrink-0">
+                    {formatCurrency(totalBalanceDue)}
+                  </span>
+                </div>
+              ) : extraPaymentAdded > 0 ? (
+                <div className="bg-teal-50 border border-teal-300 rounded-xl p-3 flex items-center justify-between text-teal-950">
+                  <div className="flex items-center gap-2">
+                    <Wallet className="w-5 h-5 text-teal-600 shrink-0" />
+                    <div>
+                      <span className="text-xs font-bold block">
+                        Extra Money Paid → Saved as Advance (एडवांस जमा):
+                      </span>
+                      <span className="text-[11px] text-teal-800">
+                        Linked to {customerName || 'customer'}&apos;s Khata &amp; auto-deducted on next bill!
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-base font-black font-mono text-teal-700">
+                    +{formatCurrency(extraPaymentAdded)}
+                  </span>
+                </div>
+              ) : (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 flex items-center gap-2 text-xs text-emerald-800">
+                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>
+                    {previousUdhaarCleared > 0 && advanceUsed > 0
+                      ? `All dues cleared! ₹${advanceUsed} Advance used + ₹${amountReceived} paid (includes ₹${previousUdhaarCleared} old Udhaar cleared).`
+                      : previousUdhaarCleared > 0
+                      ? `Full bill + ₹${previousUdhaarCleared} previous Udhaar cleared! Total paid: ₹${amountReceived}.`
+                      : advanceUsed > 0
+                      ? `Settled using ₹${advanceUsed} Advance${amountReceived > 0 ? ` + ₹${amountReceived} paid` : ''}!`
+                      : 'Full payment received! No pending balance.'}
+                  </span>
+                </div>
+              )}
+
+              {/* Notes */}
+              <div>
+                <input
+                  type="text"
+                  placeholder="Notes (optional, e.g. packaging tin, delivery note)"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full py-1.5 px-3 rounded-lg border border-stone-200 text-xs bg-white placeholder:text-stone-400"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Action buttons */}
           <div className="pt-2 flex items-center justify-end gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-xl border border-stone-300 text-xs font-semibold text-stone-700 hover:bg-stone-100 transition"
+              className="px-4 py-2.5 rounded-xl border border-stone-300 text-xs font-semibold text-stone-700 hover:bg-stone-100 transition cursor-pointer"
             >
               Cancel
             </button>
             <button
               id="btn-save-sale-bill"
               type="submit"
-              className="px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white text-xs font-bold shadow-md flex items-center gap-2 transition"
+              className={`px-6 py-2.5 rounded-xl text-white text-xs font-bold shadow-md flex items-center gap-2 transition cursor-pointer ${
+                entryMode === 'online_order'
+                  ? 'bg-sky-700 hover:bg-sky-800 active:bg-sky-900'
+                  : 'bg-amber-600 hover:bg-amber-700 active:bg-amber-800'
+              }`}
             >
-              <span>{saleToEdit ? 'Update Sale Bill (बिल सुरक्षित करें)' : 'Save & Generate Bill (बिल बनाएं)'}</span>
+              <span>
+                {entryMode === 'online_order'
+                  ? orderToEdit
+                    ? 'Update Order & View Receipt'
+                    : 'Confirm Order & Get Receipt (ऑर्डर कन्फर्म)'
+                  : saleToEdit
+                  ? 'Update Sale Bill (बिल सुरक्षित करें)'
+                  : orderToComplete
+                  ? 'Complete Delivery & Generate Bill (बिल बनाएं)'
+                  : 'Save & Generate Bill (बिल बनाएं)'}
+              </span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>

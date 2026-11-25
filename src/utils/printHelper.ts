@@ -403,7 +403,8 @@ export const captureElementAsCanvas = async (
     throw new Error(`Element #${elementId} is not visible on screen.`);
   }
 
-  const isInvoice = elementId === 'printable-invoice-area';
+  const isInvoice =
+    elementId === 'printable-invoice-area' || elementId === 'printable-order-receipt-area';
   const captureWidth = isInvoice ? 600 : 820;
   const viewportWidth = isInvoice ? 760 : 980;
   const normalizeColor = createCssColorNormalizer();
